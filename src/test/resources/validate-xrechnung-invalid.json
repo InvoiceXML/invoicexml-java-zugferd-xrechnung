@@ -1,0 +1,45 @@
+{
+  "valid": false,
+  "detail": "Invoice validation failed with 1 error(s).",
+  "data": {
+    "schemaValid": true,
+    "schematronValid": false,
+    "conformanceLevel": "XRechnung",
+    "profile": "xrechnung",
+    "customizationId": "urn:cen.eu:en16931:2017#compliant#urn:xeinkauf.de:kosit:xrechnung_3.0"
+  },
+  "errors": [
+    {
+      "rule": "BR-DE-15",
+      "layer": "cius",
+      "line": null,
+      "message": "The buyer reference (Leitweg-ID) is missing.",
+      "btCodes": [],
+      "fields": ["buyerReference"],
+      "raw": "[BR-DE-15] Das Element Buyer reference muss uebermittelt werden."
+    }
+  ],
+  "warnings": [
+    {
+      "rule": "PROFILE-SCOPE",
+      "layer": "cius",
+      "line": 2,
+      "message": "Advisory.",
+      "btCodes": [],
+      "fields": [],
+      "raw": null
+    }
+  ],
+  "report": [
+    {
+      "name": "Buyer reference",
+      "section": "buyer",
+      "path": "buyerReference",
+      "value": null,
+      "isValid": false,
+      "errors": [{ "rule": "BR-DE-15", "message": "The buyer reference (Leitweg-ID) is missing." }],
+      "warnings": []
+    }
+  ],
+  "futureField": "ignored"
+}

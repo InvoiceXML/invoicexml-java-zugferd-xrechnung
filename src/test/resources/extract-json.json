@@ -1,0 +1,42 @@
+{
+  "invoice": {
+    "invoiceNumber": "RE-2026-001",
+    "issueDate": "2026-07-25",
+    "typeCode": "380",
+    "currency": "EUR",
+    "buyerReference": "04011000-12345-34",
+    "notes": [
+      "Plain note",
+      { "note": "Skonto 2 % bei Zahlung binnen 10 Tagen", "subjectCode": "AAB" }
+    ],
+    "supportingDocuments": [
+      { "reference": "LS-77", "attachment": "aGVsbG8=", "attachmentMimeCode": "text/plain", "attachmentFilename": "note.txt" }
+    ],
+    "seller": {
+      "name": "Mustermann Software GmbH",
+      "vatIdentifier": "DE123456789",
+      "identifiers": [{ "identifier": "4000001123452", "schemeId": "0088" }],
+      "electronicAddress": { "identifier": "rechnung@mustermann.de", "schemeId": "EM" },
+      "postalAddress": { "city": "Berlin", "country": "DE" }
+    },
+    "buyer": {
+      "name": "Beispiel Handel AG",
+      "postalAddress": { "city": "Muenchen", "country": "DE" }
+    },
+    "paymentDetails": { "paymentMeansCode": "58", "paymentAccountIdentifier": "DE89370400440532013000" },
+    "totals": { "grandTotalAmount": 2975.00, "duePayableAmount": 2975.00 },
+    "vatBreakdowns": [{ "taxableAmount": 2500.00, "taxAmount": 475.00, "categoryCode": "S", "rate": 19 }],
+    "lines": [
+      {
+        "lineId": "1",
+        "quantity": 10,
+        "unitCode": "HUR",
+        "lineNetAmount": 2500.00,
+        "item": { "name": "Softwareentwicklung" },
+        "priceDetails": { "netPrice": 250.00 },
+        "vatInformation": { "categoryCode": "S", "rate": 19 }
+      }
+    ]
+  },
+  "confidence": null
+}
