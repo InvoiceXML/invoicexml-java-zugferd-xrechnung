@@ -574,7 +574,7 @@ public final class ZugferdXRechnungClient {
          */
         public ZugferdXRechnungClient build() {
             if (apiKey == null || apiKey.trim().isEmpty()) {
-                throw new IllegalArgumentException("An API key is required. Get one at https://invoicexml.com/account/signup");
+                throw new IllegalArgumentException("An API key is required. Get one at https://www.invoicexml.com/account/signup");
             }
             if (baseUrl == null || baseUrl.trim().isEmpty()) {
                 throw new IllegalArgumentException("baseUrl must not be empty");

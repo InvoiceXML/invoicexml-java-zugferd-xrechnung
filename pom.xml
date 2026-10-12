@@ -11,7 +11,7 @@
 
     <name>InvoiceXML ZUGFeRD and XRechnung Java Client</name>
     <description>Java client for ZUGFeRD and XRechnung e-invoices: create ZUGFeRD PDF/A-3 and XRechnung XML from EN 16931 data, validate, embed, render and extract, via the InvoiceXML API.</description>
-    <url>https://github.com/InvoiceXML/invoicexml-java-zugferd-xrechnung</url>
+    <url>https://www.invoicexml.com/</url>
 
     <licenses>
         <license>
@@ -26,7 +26,7 @@
             <name>InvoiceXML</name>
             <email>support@invoicexml.com</email>
             <organization>InvoiceXML</organization>
-            <organizationUrl>https://invoicexml.com</organizationUrl>
+            <organizationUrl>https://www.invoicexml.com</organizationUrl>
         </developer>
     </developers>
 
