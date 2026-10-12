@@ -7,8 +7,6 @@ package com.invoicexml.zugferdxrechnung;
  */
 public final class ErrorCodes {
 
-    /** Unclassified error. */
-    public static final int UNKNOWN = 4000;
     /** The XML is not well-formed or failed schema or business rule validation. */
     public static final int XML_VALIDATION = 4001;
     /** The request body is missing required fields or contains invalid values. */
@@ -29,12 +27,6 @@ public final class ErrorCodes {
     public static final int REMOTE_FETCH_ERROR = 4011;
     /** The invoice carries no embedded attachments to extract. */
     public static final int NO_ATTACHMENTS = 4013;
-    /** An embedded attachment could not be decoded. */
-    public static final int INVALID_ATTACHMENT = 4014;
-    /** The PDF uses a font that cannot be embedded, so it cannot become PDF/A-3. */
-    public static final int UNEMBEDDABLE_FONT = 4015;
-    /** A URL given in the options points to a forbidden address. */
-    public static final int REMOTE_FETCH_FORBIDDEN = 4016;
     /** The XML declares a specification identifier that is not an official ZUGFeRD or Factur-X profile. */
     public static final int UNSUPPORTED_ZUGFERD_PROFILE = 4017;
     /** Too many concurrent requests for this API key. Retryable after the {@code Retry-After} delay. */
