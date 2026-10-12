@@ -146,7 +146,12 @@ function unwrapRef(prop) {
 /** Returns { java, imports, ref, list, enumOf } for a schema property. */
 function javaType(owner, name, prop) {
   const enumCfg = config.stringEnums?.[`${owner}.${name}`];
-  if (enumCfg) return { java: enumCfg.type, imports: [], enumOf: enumCfg };
+  if (enumCfg) {
+    const item = { java: enumCfg.type, imports: [], enumOf: enumCfg };
+    return [].concat(prop.type || []).includes('array')
+      ? { java: `List<${enumCfg.type}>`, imports: ['java.util.List', 'java.util.ArrayList'], list: item }
+      : item;
+  }
   const ref = unwrapRef(prop);
   if (ref) {
     if (STRING_CODES[ref]) return { java: 'String', imports: [], code: ref };
@@ -327,7 +332,7 @@ import com.fasterxml.jackson.annotation.JsonValue;
  * ${cfg.doc}
  */
 public enum ${cfg.type} {
-${vals.map(([k, v]) => `    /** Wire value {@code "${v}"}. */\n    ${k}("${v}")`).join(',\n')};
+${vals.map(([k, v]) => `    /** ${cfg.valueDocs?.[k] ? cfg.valueDocs[k] + ' ' : ''}Wire value {@code "${v}"}. */\n    ${k}("${v}")`).join(',\n')};
 
     private final String value;
 
