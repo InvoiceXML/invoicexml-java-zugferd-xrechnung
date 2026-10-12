@@ -161,6 +161,12 @@ The client is immutable and thread-safe. Create one instance and share it. To re
 ./mvnw verify
 ```
 
+The unit tests run against a stubbed HTTP layer. A live suite against the real API runs only when you opt in, and it consumes about 13 credits per run:
+
+```bash
+INVOICEXML_API_KEY=your-key ./mvnw verify -Dinvoicexml.live=true
+```
+
 The classes in `com.invoicexml.zugferdxrechnung.model` are generated from the OpenAPI schema. To refresh them after a schema change, run `node tools/generate-models.mjs --fetch` (Node 18 or later) and commit the result.
 
 ## License

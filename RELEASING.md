@@ -32,7 +32,7 @@ Releases are published by a maintainer from a local machine. Credentials never g
 ## Each release
 
 1. Set the release version in `pom.xml` and in the README snippets.
-2. Run the tests: `./mvnw clean verify`.
+2. Run the tests, including the live suite: `./mvnw clean verify -Dinvoicexml.live=true`.
 3. Commit and tag: `git tag v<version>`.
 4. Upload: `./mvnw -Prelease clean deploy`. GPG asks for the key passphrase.
 5. The bundle uploads with `autoPublish=false`. Review it under *Deployments* in the portal, then press *Publish*.
