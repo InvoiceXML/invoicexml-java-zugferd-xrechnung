@@ -51,6 +51,9 @@ public final class InvoiceDocument {
     @JsonProperty("purchaseOrderReference")
     private String purchaseOrderReference;
 
+    @JsonProperty("despatchAdviceReference")
+    private String despatchAdviceReference;
+
     @JsonProperty("notes")
     private List<InvoiceNote> notes;
 
@@ -294,6 +297,26 @@ public final class InvoiceDocument {
      */
     public InvoiceDocument setPurchaseOrderReference(String purchaseOrderReference) {
         this.purchaseOrderReference = purchaseOrderReference;
+        return this;
+    }
+
+    /**
+     * Returns the value of {@code despatchAdviceReference}. Despatch advice reference. The delivery note number.
+     *
+     * @return the value, or {@code null} when not set
+     */
+    public String getDespatchAdviceReference() {
+        return despatchAdviceReference;
+    }
+
+    /**
+     * Sets {@code despatchAdviceReference}. Despatch advice reference. The delivery note number.
+     *
+     * @param despatchAdviceReference the new value, or {@code null} to omit it
+     * @return this instance
+     */
+    public InvoiceDocument setDespatchAdviceReference(String despatchAdviceReference) {
+        this.despatchAdviceReference = despatchAdviceReference;
         return this;
     }
 
@@ -704,6 +727,7 @@ public final class InvoiceDocument {
                 && Objects.equals(businessProcessType, that.businessProcessType)
                 && Objects.equals(buyerReference, that.buyerReference)
                 && Objects.equals(purchaseOrderReference, that.purchaseOrderReference)
+                && Objects.equals(despatchAdviceReference, that.despatchAdviceReference)
                 && Objects.equals(notes, that.notes)
                 && Objects.equals(vatPointDateCode, that.vatPointDateCode)
                 && Objects.equals(supportingDocuments, that.supportingDocuments)
@@ -722,7 +746,7 @@ public final class InvoiceDocument {
 
     @Override
     public int hashCode() {
-        return Objects.hash(invoiceNumber, issueDate, dueDate, typeCode, currency, taxCurrency, specificationId, businessProcessType, buyerReference, purchaseOrderReference, notes, vatPointDateCode, supportingDocuments, precedingInvoiceReferences, seller, buyer, delivery, invoicingPeriod, paymentDetails, totals, vatBreakdowns, lines, allowances, charges);
+        return Objects.hash(invoiceNumber, issueDate, dueDate, typeCode, currency, taxCurrency, specificationId, businessProcessType, buyerReference, purchaseOrderReference, despatchAdviceReference, notes, vatPointDateCode, supportingDocuments, precedingInvoiceReferences, seller, buyer, delivery, invoicingPeriod, paymentDetails, totals, vatBreakdowns, lines, allowances, charges);
     }
 
     @Override
@@ -738,6 +762,7 @@ public final class InvoiceDocument {
                 + ", businessProcessType=" + businessProcessType
                 + ", buyerReference=" + buyerReference
                 + ", purchaseOrderReference=" + purchaseOrderReference
+                + ", despatchAdviceReference=" + despatchAdviceReference
                 + ", notes=" + notes
                 + ", vatPointDateCode=" + vatPointDateCode
                 + ", supportingDocuments=" + supportingDocuments

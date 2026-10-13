@@ -15,20 +15,20 @@ Maven:
 <dependency>
     <groupId>com.invoicexml</groupId>
     <artifactId>invoicexml-zugferd-xrechnung</artifactId>
-    <version>0.1.1</version>
+    <version>0.2.0</version>
 </dependency>
 ```
 
 Gradle (Kotlin DSL):
 
 ```kotlin
-implementation("com.invoicexml:invoicexml-zugferd-xrechnung:0.1.1")
+implementation("com.invoicexml:invoicexml-zugferd-xrechnung:0.2.0")
 ```
 
 Gradle (Groovy DSL):
 
 ```groovy
-implementation 'com.invoicexml:invoicexml-zugferd-xrechnung:0.1.1'
+implementation 'com.invoicexml:invoicexml-zugferd-xrechnung:0.2.0'
 ```
 
 ## Get an API key
