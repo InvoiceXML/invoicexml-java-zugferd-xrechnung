@@ -2,6 +2,8 @@ package com.invoicexml.zugferdxrechnung;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.invoicexml.zugferdxrechnung.email.EmailMessage;
+import com.invoicexml.zugferdxrechnung.email.EmailSendResult;
 import com.invoicexml.zugferdxrechnung.model.CreateInvoiceRequest;
 import com.invoicexml.zugferdxrechnung.model.InvoiceDocument;
 import com.invoicexml.zugferdxrechnung.model.InvoiceOptions;
@@ -17,7 +19,9 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.Path;
 import java.time.Clock;
 import java.time.Duration;
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
+import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
@@ -273,6 +277,142 @@ public final class ZugferdXRechnungClient {
         return postMultipart("/v1/embed/zugferd", form, null).body();
     }
 
+    // ----------------------------------------------------------------- email
+
+    /**
+     * Creates a ZUGFeRD hybrid invoice like {@link #createZugferd(InvoiceDocument)}
+     * and sends it as a real email from your own verified domain. The result is
+     * the message id of that email, not the file.
+     *
+     * <p>The sender must be on a domain added and verified on the Verified email
+     * domains page of the dashboard. A result means the email was handed over for
+     * delivery, not that the recipient's server has received it yet.
+     *
+     * <p>Only HTTP 429 is retried, because nothing was sent. After an
+     * {@link InvoiceXmlConnectionException}, or a 503 with
+     * {@link ErrorCodes#PROCESSING_TIMEOUT}, which can happen while the send is in
+     * flight, the email may or may not have gone out, so check before you send it again.
+     *
+     * @param invoice the invoice
+     * @param email the sender, recipient and optional texts
+     * @return the status and message id of the sent email
+     * @throws InvoiceValidationException when the invoice violates the rule set or the API rejects an email field
+     * @throws InvoiceXmlApiException with {@link ErrorCodes#EMAIL_DOMAIN_NOT_VERIFIED},
+     *         {@link ErrorCodes#EMAIL_NOT_IN_PLAN} or {@link ErrorCodes#EMAIL_SENDING_DISABLED}
+     *         when the email cannot be sent
+     */
+    public EmailSendResult emailZugferd(InvoiceDocument invoice, EmailMessage email) {
+        return emailZugferd(new CreateInvoiceRequest().setInvoice(invoice), email);
+    }
+
+    /**
+     * Creates a ZUGFeRD hybrid invoice with rendering options and sends it as a real
+     * email from your own verified domain. The result is the message id, not the file.
+     *
+     * @param invoice the invoice
+     * @param email the sender, recipient and optional texts
+     * @param options the options, or {@code null} for the defaults
+     * @return the status and message id of the sent email
+     * @throws InvoiceValidationException when the invoice violates the rule set or the API rejects an email field
+     * @see #emailZugferd(InvoiceDocument, EmailMessage)
+     */
+    public EmailSendResult emailZugferd(InvoiceDocument invoice, EmailMessage email, InvoiceOptions options) {
+        return emailZugferd(new CreateInvoiceRequest().setInvoice(invoice).setOptions(options), email);
+    }
+
+    /**
+     * Creates a ZUGFeRD hybrid invoice from a full request envelope and sends it as a
+     * real email from your own verified domain. The result is the message id, not the file.
+     *
+     * @param request the request
+     * @param email the sender, recipient and optional texts
+     * @return the status and message id of the sent email
+     * @throws InvoiceValidationException when the invoice violates the rule set or the API rejects an email field
+     * @see #emailZugferd(InvoiceDocument, EmailMessage)
+     */
+    public EmailSendResult emailZugferd(CreateInvoiceRequest request, EmailMessage email) {
+        return postEmail("/v1/create/zugferd/email", request, email);
+    }
+
+    /**
+     * Creates an XRechnung like {@link #createXRechnung(InvoiceDocument)} and sends it
+     * as a real email from your own verified domain. The result is the message id of
+     * that email, not the file.
+     *
+     * @param invoice the invoice
+     * @param email the sender, recipient and optional texts
+     * @return the status and message id of the sent email
+     * @throws InvoiceValidationException when the invoice violates the rule set or the API rejects an email field
+     * @see #emailZugferd(InvoiceDocument, EmailMessage)
+     */
+    public EmailSendResult emailXRechnung(InvoiceDocument invoice, EmailMessage email) {
+        return emailXRechnung(new CreateInvoiceRequest().setInvoice(invoice), email);
+    }
+
+    /**
+     * Creates an XRechnung with options and sends it as a real email from your own
+     * verified domain. The result is the message id, not the file.
+     *
+     * @param invoice the invoice
+     * @param email the sender, recipient and optional texts
+     * @param options the options, or {@code null} for the defaults
+     * @return the status and message id of the sent email
+     * @throws InvoiceValidationException when the invoice violates the rule set or the API rejects an email field
+     * @see #emailZugferd(InvoiceDocument, EmailMessage)
+     */
+    public EmailSendResult emailXRechnung(InvoiceDocument invoice, EmailMessage email, InvoiceOptions options) {
+        return emailXRechnung(new CreateInvoiceRequest().setInvoice(invoice).setOptions(options), email);
+    }
+
+    /**
+     * Creates an XRechnung from a full request envelope and sends it as a real email
+     * from your own verified domain. The result is the message id, not the file.
+     *
+     * @param request the request
+     * @param email the sender, recipient and optional texts
+     * @return the status and message id of the sent email
+     * @throws InvoiceValidationException when the invoice violates the rule set or the API rejects an email field
+     * @see #emailZugferd(InvoiceDocument, EmailMessage)
+     */
+    public EmailSendResult emailXRechnung(CreateInvoiceRequest request, EmailMessage email) {
+        return postEmail("/v1/create/xrechnung/email", request, email);
+    }
+
+    /**
+     * Embeds a CII invoice XML into an existing PDF like
+     * {@link #embedZugferd(Path, Path)} and sends the ZUGFeRD PDF/A-3 as a real email
+     * from your own verified domain. The result is the message id, not the file. The
+     * XML always runs through the full rule set first.
+     *
+     * @param pdf the visual PDF
+     * @param xml the CII XML
+     * @param email the sender, recipient and optional texts
+     * @return the status and message id of the sent email
+     * @throws InvoiceValidationException when the XML violates the rule set or the API rejects an email field
+     * @see #emailZugferd(InvoiceDocument, EmailMessage)
+     */
+    public EmailSendResult emailEmbeddedZugferd(Path pdf, Path xml, EmailMessage email) {
+        return emailEmbeddedZugferd(FileUpload.of(pdf), FileUpload.of(xml), email);
+    }
+
+    /**
+     * Embeds a CII invoice XML into an existing PDF and sends the ZUGFeRD PDF/A-3 as a
+     * real email from your own verified domain. The result is the message id, not the file.
+     *
+     * @param pdf the visual PDF
+     * @param xml the CII XML
+     * @param email the sender, recipient and optional texts
+     * @return the status and message id of the sent email
+     * @throws InvoiceValidationException when the XML violates the rule set or the API rejects an email field
+     * @see #emailEmbeddedZugferd(Path, Path, EmailMessage)
+     */
+    public EmailSendResult emailEmbeddedZugferd(FileUpload pdf, FileUpload xml, EmailMessage email) {
+        Objects.requireNonNull(email, "email");
+        Multipart form = new Multipart().file("pdf", pdf).file("xml", xml);
+        addEmail(form, wireEmail(email));
+        return postMultipartForJson("/v1/embed/zugferd/email", form, EmailSendResult.class);
+    }
+
     // ---------------------------------------------------------------- render
 
     /**
@@ -367,6 +507,59 @@ public final class ZugferdXRechnungClient {
 
     // -------------------------------------------------------------- plumbing
 
+    /** The email as sent on every route: blank copy addresses dropped, the others trimmed. */
+    private static EmailMessage wireEmail(EmailMessage email) {
+        return new EmailMessage()
+                .setFrom(email.getFrom())
+                .setFromName(email.getFromName())
+                .setTo(email.getTo())
+                .setCc(copyAddresses(email.getCc()))
+                .setBcc(copyAddresses(email.getBcc()))
+                .setReplyTo(email.getReplyTo())
+                .setSubject(email.getSubject())
+                .setMessage(email.getMessage());
+    }
+
+    private static List<String> copyAddresses(List<String> addresses) {
+        if (addresses == null) {
+            return null;
+        }
+        List<String> kept = new ArrayList<>();
+        for (String address : addresses) {
+            if (address != null && !address.isBlank()) {
+                kept.add(address.strip());
+            }
+        }
+        return kept.isEmpty() ? null : kept;
+    }
+
+    private static void addEmail(Multipart form, EmailMessage email) {
+        form.field("email.from", email.getFrom());
+        form.field("email.fromName", email.getFromName());
+        form.field("email.to", email.getTo());
+        addEach(form, "email.cc", email.getCc());
+        addEach(form, "email.bcc", email.getBcc());
+        form.field("email.replyTo", email.getReplyTo());
+        form.field("email.subject", email.getSubject());
+        form.field("email.message", email.getMessage());
+    }
+
+    private static void addEach(Multipart form, String name, List<String> values) {
+        if (values == null) {
+            return;
+        }
+        for (String value : values) {
+            form.field(name, value);
+        }
+    }
+
+    private EmailSendResult postEmail(String path, CreateInvoiceRequest request, EmailMessage email) {
+        Objects.requireNonNull(request, "request");
+        Objects.requireNonNull(email, "email");
+        return readJson(path, postJson(path, new EmailInvoiceRequest(request, wireEmail(email)), "application/json"),
+                EmailSendResult.class);
+    }
+
     private TransportResponse postJson(String path, Object body, String accept) {
         Objects.requireNonNull(body, "request");
         byte[] json;
@@ -383,7 +576,10 @@ public final class ZugferdXRechnungClient {
     }
 
     private <T> T postMultipartForJson(String path, Multipart form, Class<T> type) {
-        TransportResponse response = postMultipart(path, form, "application/json");
+        return readJson(path, postMultipart(path, form, "application/json"), type);
+    }
+
+    private <T> T readJson(String path, TransportResponse response, Class<T> type) {
         try {
             return mapper.readValue(response.body(), type);
         } catch (IOException e) {
@@ -455,6 +651,20 @@ public final class ZugferdXRechnungClient {
     private static final class ExtractJsonResponse {
         @com.fasterxml.jackson.annotation.JsonProperty("invoice")
         InvoiceDocument invoice;
+    }
+
+    /** Request body of the create email endpoints: the create envelope plus {@code email}. */
+    private static final class EmailInvoiceRequest {
+        @com.fasterxml.jackson.annotation.JsonUnwrapped
+        final CreateInvoiceRequest request;
+
+        @com.fasterxml.jackson.annotation.JsonProperty("email")
+        final EmailMessage email;
+
+        EmailInvoiceRequest(CreateInvoiceRequest request, EmailMessage email) {
+            this.request = request;
+            this.email = email;
+        }
     }
 
     /**

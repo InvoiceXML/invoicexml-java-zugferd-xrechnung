@@ -10,6 +10,9 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.invoicexml.zugferdxrechnung.email.EmailMessage;
+import com.invoicexml.zugferdxrechnung.email.EmailSendResult;
+import com.invoicexml.zugferdxrechnung.model.CreateInvoiceRequest;
 import com.invoicexml.zugferdxrechnung.model.InvoiceDocument;
 import com.invoicexml.zugferdxrechnung.model.InvoiceOptions;
 import com.invoicexml.zugferdxrechnung.model.PdfLanguage;
@@ -36,6 +39,7 @@ class ZugferdXRechnungClientTest {
 
     private static final byte[] PDF = "%PDF-1.7 stub".getBytes(StandardCharsets.US_ASCII);
     private static final String XML = "<?xml version=\"1.0\"?><Invoice/>";
+    private static final String ACCEPTED = "{\"status\":\"accepted\",\"messageId\":\"0107019a-msg\"}";
 
     private final StubTransport stub = new StubTransport();
     private final List<Duration> sleeps = new ArrayList<>();
@@ -52,6 +56,18 @@ class ZugferdXRechnungClientTest {
 
     private static String body(TransportRequest r) {
         return new String(r.body(), StandardCharsets.UTF_8);
+    }
+
+    private static int count(String haystack, String needle) {
+        int n = 0;
+        for (int i = haystack.indexOf(needle); i >= 0; i = haystack.indexOf(needle, i + 1)) {
+            n++;
+        }
+        return n;
+    }
+
+    private static EmailMessage email() {
+        return EmailMessage.of("invoices@example.com", "ap@example.org");
     }
 
     // ------------------------------------------------------------- create
@@ -210,6 +226,237 @@ class ZugferdXRechnungClientTest {
         client().embedZugferd(FileUpload.ofPdf(PDF), FileUpload.ofXml(XML), new EmbedOptions().setSkipValidation(true));
 
         assertTrue(body(stub.last()).contains("name=\"skipValidation\"\r\n\r\ntrue\r\n"));
+    }
+
+    // -------------------------------------------------------------- email
+
+    @Test
+    void emailZugferdPostsInvoiceAndEmailAndParsesResult() throws Exception {
+        stub.respondJson(200, ACCEPTED);
+
+        EmailSendResult result = client().emailZugferd(Fixtures.invoice(), email());
+
+        assertEquals("accepted", result.getStatus());
+        assertEquals("0107019a-msg", result.getMessageId());
+        TransportRequest r = stub.last();
+        assertEquals("POST", r.method());
+        assertEquals("https://api.invoicexml.com/v1/create/zugferd/email", r.uri().toString());
+        assertEquals("application/json", r.header("Content-Type"));
+        assertEquals("application/json", r.header("Accept"));
+
+        JsonNode sent = json.readTree(r.body());
+        assertEquals("RE-2026-001", sent.at("/invoice/invoiceNumber").asText());
+        assertFalse(sent.has("options"), "null options must be omitted");
+        JsonNode email = sent.get("email");
+        assertEquals(2, email.size(), "unset email fields must be omitted");
+        assertEquals("invoices@example.com", email.get("from").asText());
+        assertEquals("ap@example.org", email.get("to").asText());
+    }
+
+    @Test
+    void emailZugferdSendsOptionsAndEveryEmailField() throws Exception {
+        stub.respondJson(200, ACCEPTED);
+
+        client().emailZugferd(Fixtures.invoice(), email()
+                        .setFromName("Billing")
+                        .addCc("cc@example.org")
+                        .addBcc("bcc@example.org")
+                        .setReplyTo("help@example.com")
+                        .setSubject("Rechnung RE-2026-001")
+                        .setMessage("Guten Tag"),
+                new InvoiceOptions().setLanguage(PdfLanguage.DE));
+
+        JsonNode sent = json.readTree(stub.last().body());
+        assertEquals("DE", sent.at("/options/language").asText());
+        JsonNode email = sent.get("email");
+        assertEquals("Billing", email.get("fromName").asText());
+        assertEquals("cc@example.org", email.at("/cc/0").asText());
+        assertEquals("bcc@example.org", email.at("/bcc/0").asText());
+        assertEquals("help@example.com", email.get("replyTo").asText());
+        assertEquals("Rechnung RE-2026-001", email.get("subject").asText());
+        assertEquals("Guten Tag", email.get("message").asText());
+    }
+
+    @Test
+    void emailZugferdTakesAFullRequestEnvelope() throws Exception {
+        stub.respondJson(200, ACCEPTED);
+
+        client().emailZugferd(new CreateInvoiceRequest().setInvoice(Fixtures.invoice()), email());
+
+        JsonNode sent = json.readTree(stub.last().body());
+        assertEquals("RE-2026-001", sent.at("/invoice/invoiceNumber").asText());
+        assertEquals("ap@example.org", sent.at("/email/to").asText());
+    }
+
+    @Test
+    void emailXRechnungPostsToItsRouteAndSendsSyntax() throws Exception {
+        stub.respondJson(200, ACCEPTED);
+
+        EmailSendResult result = client().emailXRechnung(Fixtures.invoice(), email(),
+                new InvoiceOptions().setSyntax(XRechnungSyntax.CII));
+
+        assertEquals("0107019a-msg", result.getMessageId());
+        assertEquals("/v1/create/xrechnung/email", stub.last().uri().getPath());
+        JsonNode sent = json.readTree(stub.last().body());
+        assertEquals("cii", sent.at("/options/syntax").asText());
+        assertEquals("invoices@example.com", sent.at("/email/from").asText());
+    }
+
+    @Test
+    void emailEmbeddedZugferdSendsFilePartsAndEmailFields() {
+        stub.respondJson(200, ACCEPTED);
+
+        EmailSendResult result = client().emailEmbeddedZugferd(FileUpload.ofPdf(PDF), FileUpload.ofXml(XML), email()
+                .setFromName("Billing")
+                .addCc("one@example.org")
+                .addCc("two@example.org")
+                .addBcc("three@example.org")
+                .setReplyTo("help@example.com")
+                .setSubject("Rechnung RE-2026-001")
+                .setMessage("Guten Tag"));
+
+        assertEquals("accepted", result.getStatus());
+        assertEquals("0107019a-msg", result.getMessageId());
+        TransportRequest r = stub.last();
+        assertEquals("/v1/embed/zugferd/email", r.uri().getPath());
+        assertEquals("application/json", r.header("Accept"));
+        assertTrue(r.header("Content-Type").startsWith("multipart/form-data; boundary="));
+        String body = body(r);
+        assertTrue(body.contains("name=\"pdf\"; filename=\"invoice.pdf\""));
+        assertTrue(body.contains("name=\"xml\"; filename=\"invoice.xml\""));
+        assertTrue(body.contains("name=\"email.from\"\r\n\r\ninvoices@example.com\r\n"));
+        assertTrue(body.contains("name=\"email.fromName\"\r\n\r\nBilling\r\n"));
+        assertTrue(body.contains("name=\"email.to\"\r\n\r\nap@example.org\r\n"));
+        assertEquals(2, count(body, "name=\"email.cc\"\r\n\r\n"));
+        assertTrue(body.contains("name=\"email.cc\"\r\n\r\none@example.org\r\n"));
+        assertTrue(body.contains("name=\"email.cc\"\r\n\r\ntwo@example.org\r\n"));
+        assertEquals(1, count(body, "name=\"email.bcc\"\r\n\r\nthree@example.org\r\n"));
+        assertTrue(body.contains("name=\"email.replyTo\"\r\n\r\nhelp@example.com\r\n"));
+        assertTrue(body.contains("name=\"email.subject\"\r\n\r\nRechnung RE-2026-001\r\n"));
+        assertTrue(body.contains("name=\"email.message\"\r\n\r\nGuten Tag\r\n"));
+        assertFalse(body.contains("skipValidation"));
+    }
+
+    @Test
+    void emailEmbeddedZugferdOmitsUnsetFields(@TempDir Path dir) throws Exception {
+        Path pdf = dir.resolve("rechnung.pdf");
+        Path xml = dir.resolve("rechnung.xml");
+        Files.write(pdf, PDF);
+        Files.write(xml, XML.getBytes(StandardCharsets.UTF_8));
+        stub.respondJson(200, ACCEPTED);
+
+        client().emailEmbeddedZugferd(pdf, xml, email());
+
+        String body = body(stub.last());
+        assertTrue(body.contains("filename=\"rechnung.pdf\""));
+        assertTrue(body.contains("filename=\"rechnung.xml\""));
+        assertEquals(2, count(body, "name=\"email."));
+        assertTrue(body.contains("name=\"email.from\""));
+        assertTrue(body.contains("name=\"email.to\""));
+    }
+
+    @Test
+    void emailRequiresAnEmailMessage() {
+        assertThrows(NullPointerException.class, () -> client().emailZugferd(Fixtures.invoice(), null));
+        assertThrows(NullPointerException.class,
+                () -> client().emailEmbeddedZugferd(FileUpload.ofPdf(PDF), FileUpload.ofXml(XML), null));
+        assertTrue(stub.requests.isEmpty());
+    }
+
+    @Test
+    void unverifiedSenderDomainSurfacesItsErrorCode() {
+        stub.respondJson(400, "{\"title\":\"Sending domain not verified\",\"detail\":\"The sending domain example.com is not verified yet.\",\"errorCode\":4022,\"traceId\":\"00-abc-def-01\"}");
+
+        InvoiceXmlApiException e = assertThrows(InvoiceXmlApiException.class,
+                () -> client().emailZugferd(Fixtures.invoice(), email()));
+
+        assertFalse(e instanceof InvoiceValidationException);
+        assertEquals(400, e.getStatusCode());
+        assertEquals(ErrorCodes.EMAIL_DOMAIN_NOT_VERIFIED, e.getErrorCode());
+        assertEquals("00-abc-def-01", e.getTraceId());
+        assertEquals(1, stub.requests.size());
+    }
+
+    @Test
+    void emailPlanAndAccountRefusalsSurfaceTheirErrorCodes() {
+        stub.respondJson(403, "{\"title\":\"Email sending not included in your plan\",\"errorCode\":4020}")
+            .respondJson(403, "{\"title\":\"Email sending disabled\",\"errorCode\":4021}");
+
+        InvoiceXmlApiException plan = assertThrows(InvoiceXmlApiException.class,
+                () -> client().emailXRechnung(Fixtures.invoice(), email()));
+        InvoiceXmlApiException disabled = assertThrows(InvoiceXmlApiException.class,
+                () -> client().emailEmbeddedZugferd(FileUpload.ofPdf(PDF), FileUpload.ofXml(XML), email()));
+
+        assertEquals(ErrorCodes.EMAIL_NOT_IN_PLAN, plan.getErrorCode());
+        assertEquals(ErrorCodes.EMAIL_SENDING_DISABLED, disabled.getErrorCode());
+    }
+
+    @Test
+    void rejectedEmailFieldCarriesFindings() {
+        stub.respondJson(400, "{\"title\":\"Validation failed\",\"errorCode\":4002,\"errors\":[{\"message\":\"The sender address is not valid.\",\"fields\":[\"email.from\"]}]}");
+
+        InvoiceValidationException e = assertThrows(InvoiceValidationException.class,
+                () -> client().emailZugferd(Fixtures.invoice(), email()));
+
+        assertEquals(ErrorCodes.MODEL_VALIDATION, e.getErrorCode());
+        assertEquals(List.of("email.from"), e.getErrors().get(0).getFields());
+    }
+
+    @Test
+    void emailIsRetriedOnRateLimitWithTheSameBody() {
+        stub.respondJson(429, "{\"title\":\"Too many requests\",\"errorCode\":4019}", "Retry-After", "2")
+            .respondJson(200, ACCEPTED);
+
+        EmailSendResult result = client().emailZugferd(Fixtures.invoice(), email());
+
+        assertEquals("0107019a-msg", result.getMessageId());
+        assertEquals(List.of(Duration.ofSeconds(2)), sleeps);
+        assertEquals(2, stub.requests.size());
+        assertArrayEquals(stub.requests.get(0).body(), stub.requests.get(1).body());
+    }
+
+    @Test
+    void emailIsNotRetriedOnServerOrNetworkFailure() {
+        stub.respondJson(503, "{\"title\":\"Service unavailable\"}");
+        assertThrows(InvoiceXmlApiException.class, () -> client().emailZugferd(Fixtures.invoice(), email()));
+        assertEquals(1, stub.requests.size());
+
+        stub.fail(new IOException("connection reset"));
+        assertThrows(InvoiceXmlConnectionException.class,
+                () -> client().emailEmbeddedZugferd(FileUpload.ofPdf(PDF), FileUpload.ofXml(XML), email()));
+        assertEquals(2, stub.requests.size());
+        assertTrue(sleeps.isEmpty());
+    }
+
+    @Test
+    void blankCopyAddressesAreDroppedOnBothRouteTypes() throws Exception {
+        stub.respondJson(200, ACCEPTED).respondJson(200, ACCEPTED);
+        EmailMessage email = email().setCc(List.of(" ", " one@example.org ")).setBcc(List.of(""));
+
+        client().emailZugferd(Fixtures.invoice(), email);
+        client().emailEmbeddedZugferd(FileUpload.ofPdf(PDF), FileUpload.ofXml(XML), email);
+
+        JsonNode sent = json.readTree(stub.requests.get(0).body()).get("email");
+        assertEquals(1, sent.get("cc").size());
+        assertEquals("one@example.org", sent.at("/cc/0").asText());
+        assertFalse(sent.has("bcc"), "a list left empty must be omitted");
+        String form = body(stub.requests.get(1));
+        assertEquals(1, count(form, "name=\"email.cc\""));
+        assertTrue(form.contains("name=\"email.cc\"\r\n\r\none@example.org\r\n"));
+        assertFalse(form.contains("name=\"email.bcc\""));
+    }
+
+    @Test
+    void emailEmbeddedZugferdSendsNonAsciiSubjectAndSenderNameAsUtf8() {
+        stub.respondJson(200, ACCEPTED);
+
+        client().emailEmbeddedZugferd(FileUpload.ofPdf(PDF), FileUpload.ofXml(XML), email()
+                .setFromName("Müller & Söhne")
+                .setSubject("Rechnung für März"));
+
+        String body = body(stub.last());
+        assertTrue(body.contains("name=\"email.fromName\"\r\n\r\nMüller & Söhne\r\n"));
+        assertTrue(body.contains("name=\"email.subject\"\r\n\r\nRechnung für März\r\n"));
     }
 
     // ------------------------------------------------------------- render

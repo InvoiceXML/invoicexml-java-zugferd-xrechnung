@@ -31,6 +31,14 @@ public final class ErrorCodes {
     public static final int UNSUPPORTED_ZUGFERD_PROFILE = 4017;
     /** Too many concurrent requests for this API key. Retryable after the {@code Retry-After} delay. */
     public static final int TOO_MANY_REQUESTS = 4019;
+    /** Your plan does not include sending invoices by email. Not billed. */
+    public static final int EMAIL_NOT_IN_PLAN = 4020;
+    /** Email sending is disabled or paused for this account. Not billed. */
+    public static final int EMAIL_SENDING_DISABLED = 4021;
+    /** The sender's domain is not verified yet. Not billed. */
+    public static final int EMAIL_DOMAIN_NOT_VERIFIED = 4022;
+    /** The request exceeded the processing time limit (HTTP 503). */
+    public static final int PROCESSING_TIMEOUT = 4023;
 
     private ErrorCodes() {
     }
