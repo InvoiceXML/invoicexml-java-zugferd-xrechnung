@@ -3,12 +3,13 @@ package com.invoicexml.zugferdxrechnung;
 import java.time.Duration;
 
 /**
- * Thrown on HTTP 429 once the client's automatic retries are used up: too many
- * requests for this API key are being processed at the same time.
+ * Thrown on HTTP 429 once the client's automatic retries are used up, or on the
+ * first 429 of a transform call: too many requests for this API key are being
+ * processed at the same time.
  *
- * <p>The client already waits for the {@code Retry-After} delay and retries
- * (see {@link ZugferdXRechnungClient.Builder#maxRetries(int)}), so seeing this
- * exception means the account stayed saturated. Rate-limited requests consume no credits.
+ * <p>Every call except transform already waits for the {@code Retry-After} delay
+ * and retries (see {@link ZugferdXRechnungClient.Builder#maxRetries(int)}), so
+ * seeing this exception there means the account stayed saturated. A 429 is not billed.
  */
 public class RateLimitException extends InvoiceXmlApiException {
 

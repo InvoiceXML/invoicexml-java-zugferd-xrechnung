@@ -7,6 +7,8 @@ package com.invoicexml.zugferdxrechnung;
  */
 public final class ErrorCodes {
 
+    /** An unexpected error. */
+    public static final int UNKNOWN = 4000;
     /** The XML is not well-formed or failed schema or business rule validation. */
     public static final int XML_VALIDATION = 4001;
     /** The request body is missing required fields or contains invalid values. */
@@ -21,12 +23,22 @@ public final class ErrorCodes {
     public static final int NO_EMBEDDED_XML = 4006;
     /** The PDF could not be processed. */
     public static final int PDF_ERROR = 4007;
+    /** The document is not an invoice. */
+    public static final int NOT_AN_INVOICE = 4008;
+    /** The document contains more than one invoice. */
+    public static final int MULTIPLE_INVOICES = 4009;
     /** The API key is missing, unknown or inactive. */
     public static final int UNAUTHORIZED = 4010;
     /** A URL given in the options (such as {@code pdfUrl} or {@code logoUrl}) could not be fetched. */
     public static final int REMOTE_FETCH_ERROR = 4011;
     /** The invoice carries no embedded attachments to extract. */
     public static final int NO_ATTACHMENTS = 4013;
+    /** An embedded attachment could not be decoded. */
+    public static final int INVALID_ATTACHMENT = 4014;
+    /** The supplied PDF uses a font that cannot be embedded, so it cannot become PDF/A-3. */
+    public static final int UNEMBEDDABLE_FONT = 4015;
+    /** The host of a PDF or logo URL refused access (HTTP 403). */
+    public static final int REMOTE_FETCH_FORBIDDEN = 4016;
     /** The XML declares a specification identifier that is not an official ZUGFeRD or Factur-X profile. */
     public static final int UNSUPPORTED_ZUGFERD_PROFILE = 4017;
     /** Too many concurrent requests for this API key. Retryable after the {@code Retry-After} delay. */

@@ -19,6 +19,7 @@ import com.invoicexml.zugferdxrechnung.model.PdfLanguage;
 import com.invoicexml.zugferdxrechnung.model.XRechnungSyntax;
 import com.invoicexml.zugferdxrechnung.transport.TransportRequest;
 import com.invoicexml.zugferdxrechnung.validation.ValidationFinding;
+import com.invoicexml.zugferdxrechnung.validation.ValidationReport;
 import com.invoicexml.zugferdxrechnung.validation.ValidationResult;
 import java.io.IOException;
 import java.math.BigDecimal;
@@ -32,6 +33,8 @@ import java.time.LocalDate;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.function.Supplier;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
@@ -474,6 +477,315 @@ class ZugferdXRechnungClientTest {
         assertTrue(body.contains("name=\"logoUrl\"\r\n\r\nhttps://example.com/logo.png\r\n"));
     }
 
+    @Test
+    void renderCiiPostsToItsRouteAndReturnsPdf(@TempDir Path dir) throws Exception {
+        Path xml = dir.resolve("rechnung.xml");
+        Files.write(xml, XML.getBytes(StandardCharsets.UTF_8));
+        stub.respond(200, "application/pdf", PDF);
+
+        assertArrayEquals(PDF, client().renderCiiToPdf(xml));
+
+        assertEquals("/v1/render/cii/to/pdf", stub.last().uri().getPath());
+        String body = body(stub.last());
+        assertTrue(body.contains("name=\"file\"; filename=\"rechnung.xml\""));
+        assertEquals(1, count(body, "form-data; name="), "unset options must be omitted");
+    }
+
+    @Test
+    void renderSendsQrCodeOnlyWhenSet() {
+        stub.respond(200, "application/pdf", PDF).respond(200, "application/pdf", PDF).respond(200, "application/pdf", PDF);
+
+        client().renderCiiToPdf(FileUpload.ofXml(XML), new RenderOptions().setIncludeQrCode(true));
+        client().renderXRechnungToPdf(FileUpload.ofXml(XML), new RenderOptions().setIncludeQrCode(false));
+        client().renderCiiToPdf(FileUpload.ofXml(XML), new RenderOptions());
+
+        assertTrue(body(stub.requests.get(0)).contains("name=\"includeQrCode\"\r\n\r\ntrue\r\n"));
+        assertTrue(body(stub.requests.get(1)).contains("name=\"includeQrCode\"\r\n\r\nfalse\r\n"));
+        assertFalse(body(stub.requests.get(2)).contains("includeQrCode"));
+    }
+
+    // ------------------------------------------------------------ convert
+
+    private void assertConvertsToXml(String route, Supplier<String> call) {
+        stub.respond(200, "application/xml", XML.getBytes(StandardCharsets.UTF_8));
+
+        assertEquals(XML, call.get());
+
+        assertEquals(route, stub.last().uri().getPath());
+        String body = body(stub.last());
+        assertTrue(body.contains("form-data; name=\"file\"; filename="));
+        assertEquals(1, count(body, "form-data; name="), "unset options must be omitted");
+    }
+
+    private void assertConvertsToPdf(String route, Supplier<byte[]> call) {
+        stub.respond(200, "application/pdf", PDF);
+
+        assertArrayEquals(PDF, call.get());
+
+        assertEquals(route, stub.last().uri().getPath());
+        String body = body(stub.last());
+        assertTrue(body.contains("form-data; name=\"file\"; filename="));
+        assertEquals(1, count(body, "form-data; name="), "unset options must be omitted");
+    }
+
+    @Test
+    void convertRoutesToXmlPostTheFileAndReturnXml() {
+        ZugferdXRechnungClient c = client();
+        FileUpload pdf = FileUpload.ofPdf(PDF);
+        FileUpload xml = FileUpload.ofXml(XML);
+
+        assertConvertsToXml("/v1/convert/zugferd/to/ubl", () -> c.convertZugferdToUbl(pdf));
+        assertConvertsToXml("/v1/convert/zugferd/to/cii", () -> c.convertZugferdToCii(pdf));
+        assertConvertsToXml("/v1/convert/xrechnung/to/ubl", () -> c.convertXRechnungToUbl(xml));
+        assertConvertsToXml("/v1/convert/xrechnung/to/cii", () -> c.convertXRechnungToCii(xml));
+        assertConvertsToXml("/v1/convert/ubl/to/xrechnung", () -> c.convertUblToXRechnung(xml));
+        assertConvertsToXml("/v1/convert/cii/to/xrechnung", () -> c.convertCiiToXRechnung(xml));
+    }
+
+    @Test
+    void convertRoutesToZugferdPostTheFileAndReturnPdf() {
+        ZugferdXRechnungClient c = client();
+        FileUpload xml = FileUpload.ofXml(XML);
+
+        assertConvertsToPdf("/v1/convert/cii/to/zugferd", () -> c.convertCiiToZugferd(xml));
+        assertConvertsToPdf("/v1/convert/ubl/to/zugferd", () -> c.convertUblToZugferd(xml));
+        assertConvertsToPdf("/v1/convert/xrechnung/to/zugferd", () -> c.convertXRechnungToZugferd(xml));
+    }
+
+    @Test
+    void convertTakesPaths(@TempDir Path dir) throws Exception {
+        Path pdf = dir.resolve("rechnung.pdf");
+        Path xml = dir.resolve("rechnung.xml");
+        Files.write(pdf, PDF);
+        Files.write(xml, XML.getBytes(StandardCharsets.UTF_8));
+        ZugferdXRechnungClient c = client();
+
+        assertConvertsToXml("/v1/convert/zugferd/to/cii", () -> c.convertZugferdToCii(pdf));
+        assertTrue(body(stub.last()).contains("filename=\"rechnung.pdf\""));
+        assertConvertsToPdf("/v1/convert/xrechnung/to/zugferd", () -> c.convertXRechnungToZugferd(xml));
+        assertTrue(body(stub.last()).contains("filename=\"rechnung.xml\""));
+    }
+
+    @Test
+    void convertToXmlSendsValidationLanguageAndNoLanguage() {
+        stub.respond(200, "application/xml", XML.getBytes(StandardCharsets.UTF_8));
+
+        client().convertUblToXRechnung(FileUpload.ofXml(XML), new ConvertOptions().setValidationLanguage(PdfLanguage.DE));
+
+        String body = body(stub.last());
+        assertTrue(body.contains("name=\"validationLanguage\"\r\n\r\nde\r\n"));
+        assertFalse(body.contains("name=\"language\""));
+    }
+
+    @Test
+    void convertToZugferdSendsLanguageAndValidationLanguage() {
+        stub.respond(200, "application/pdf", PDF);
+
+        client().convertCiiToZugferd(FileUpload.ofXml(XML), new ConvertToPdfOptions()
+                .setLanguage(PdfLanguage.DE)
+                .setValidationLanguage(PdfLanguage.FR));
+
+        String body = body(stub.last());
+        assertTrue(body.contains("name=\"language\"\r\n\r\nde\r\n"));
+        assertTrue(body.contains("name=\"validationLanguage\"\r\n\r\nfr\r\n"));
+    }
+
+    @Test
+    void convertRejectionCarriesFindings() {
+        stub.respondJson(400, Fixtures.resource("create-400.json"));
+
+        InvoiceValidationException e = assertThrows(InvoiceValidationException.class,
+                () -> client().convertCiiToXRechnung(FileUpload.ofXml(XML)));
+
+        assertEquals(ErrorCodes.MODEL_VALIDATION, e.getErrorCode());
+        assertEquals("BR-CO-26", e.getErrors().get(0).getRule());
+    }
+
+    @Test
+    void convertOfAPdfWithoutXmlSurfacesItsErrorCode() {
+        stub.respondJson(400, "{\"title\":\"No embedded XML\",\"errorCode\":4006}");
+
+        InvoiceXmlApiException e = assertThrows(InvoiceXmlApiException.class,
+                () -> client().convertZugferdToUbl(FileUpload.ofPdf(PDF)));
+
+        assertEquals(ErrorCodes.NO_EMBEDDED_XML, e.getErrorCode());
+    }
+
+    // ------------------------------------------------------------- report
+
+    @Test
+    void validateZugferdReportReturnsPdfAndPassedVerdict(@TempDir Path dir) throws Exception {
+        Path pdf = dir.resolve("incoming.pdf");
+        Files.write(pdf, PDF);
+        stub.respond(200, "application/pdf", PDF, "X-Invoice-Valid", "true");
+
+        ValidationReport report = client().validateZugferdReport(pdf);
+
+        assertArrayEquals(PDF, report.getFile());
+        assertEquals(Boolean.TRUE, report.getValid());
+        assertEquals("/v1/validate/zugferd/report", stub.last().uri().getPath());
+        String body = body(stub.last());
+        assertTrue(body.contains("name=\"file\"; filename=\"incoming.pdf\""));
+        assertEquals(1, count(body, "form-data; name="), "unset options must be omitted");
+    }
+
+    @Test
+    void validateXRechnungReportReturnsFailedVerdictWithoutThrowing() {
+        stub.respond(200, "application/pdf", PDF, "X-Invoice-Valid", "false");
+
+        ValidationReport report = client().validateXRechnungReport(FileUpload.ofXml(XML));
+
+        assertArrayEquals(PDF, report.getFile());
+        assertEquals(Boolean.FALSE, report.getValid());
+        assertEquals("/v1/validate/xrechnung/report", stub.last().uri().getPath());
+    }
+
+    @Test
+    void reportVerdictIsNullWhenTheHeaderIsMissingOrUnreadable() {
+        stub.respond(200, "application/pdf", PDF).respond(200, "application/pdf", PDF, "X-Invoice-Valid", "maybe");
+
+        assertNull(client().validateZugferdReport(FileUpload.ofPdf(PDF)).getValid());
+        assertNull(client().validateZugferdReport(FileUpload.ofPdf(PDF)).getValid());
+    }
+
+    @Test
+    void reportHeaderNameIsMatchedCaseInsensitively() {
+        stub.respond(200, "application/pdf", PDF, "x-invoice-valid", "true");
+
+        assertEquals(Boolean.TRUE, client().validateZugferdReport(FileUpload.ofPdf(PDF)).getValid());
+    }
+
+    @Test
+    void reportSendsValidationLanguage() {
+        stub.respond(200, "application/pdf", PDF, "X-Invoice-Valid", "true")
+            .respond(200, "application/pdf", PDF, "X-Invoice-Valid", "true");
+
+        client().validateZugferdReport(FileUpload.ofPdf(PDF), new ReportOptions().setValidationLanguage(PdfLanguage.DE));
+        client().validateXRechnungReport(FileUpload.ofXml(XML), new ReportOptions().setValidationLanguage(PdfLanguage.FR));
+
+        assertTrue(body(stub.requests.get(0)).contains("name=\"validationLanguage\"\r\n\r\nde\r\n"));
+        assertTrue(body(stub.requests.get(1)).contains("name=\"validationLanguage\"\r\n\r\nfr\r\n"));
+    }
+
+    @Test
+    void reportTransportProblemRaisesTheUsualException() {
+        stub.respondJson(400, "{\"title\":\"Missing file\",\"errorCode\":4003}");
+
+        InvoiceXmlApiException e = assertThrows(InvoiceXmlApiException.class,
+                () -> client().validateZugferdReport(FileUpload.ofPdf(new byte[0])));
+
+        assertEquals(ErrorCodes.MISSING_FILE, e.getErrorCode());
+    }
+
+    // ---------------------------------------------------------- transform
+
+    @Test
+    void transformToZugferdOmitsUnsetOptions(@TempDir Path dir) throws Exception {
+        Path pdf = dir.resolve("invoice.pdf");
+        Files.write(pdf, PDF);
+        stub.respond(200, "application/pdf", PDF).respond(200, "application/pdf", PDF);
+
+        assertArrayEquals(PDF, client().transformToZugferd(pdf));
+        client().transformToZugferd(FileUpload.ofPdf(PDF), new TransformOptions());
+
+        assertEquals("/v1/transform/to/zugferd", stub.last().uri().getPath());
+        for (TransportRequest r : stub.requests) {
+            assertEquals(1, count(body(r), "form-data; name="), "unset options must be omitted");
+        }
+    }
+
+    @Test
+    void transformToZugferdSendsEveryOption() {
+        stub.respond(200, "application/pdf", PDF);
+
+        client().transformToZugferd(FileUpload.ofPdf(PDF), new TransformOptions()
+                .setLanguage(PdfLanguage.DE)
+                .setPreserveOriginalPdf(true)
+                .setIncludeAdvancedProperties(true)
+                .setValidationLanguage(PdfLanguage.FR));
+
+        String body = body(stub.last());
+        assertTrue(body.contains("name=\"language\"\r\n\r\nde\r\n"));
+        assertTrue(body.contains("name=\"preserveOriginalPdf\"\r\n\r\ntrue\r\n"));
+        assertTrue(body.contains("name=\"includeAdvancedProperties\"\r\n\r\ntrue\r\n"));
+        assertTrue(body.contains("name=\"validationLanguage\"\r\n\r\nfr\r\n"));
+    }
+
+    @Test
+    void transformCanTurnOffTheDetailsSection() {
+        stub.respond(200, "application/pdf", PDF);
+
+        client().transformToZugferd(FileUpload.ofPdf(PDF), new TransformOptions().setIncludeAdvancedProperties(false));
+
+        String body = body(stub.last());
+        assertTrue(body.contains("name=\"includeAdvancedProperties\"\r\n\r\nfalse\r\n"));
+        assertFalse(body.contains("preserveOriginalPdf"));
+    }
+
+    @Test
+    void transformToXRechnungSendsBuyerReferenceAndReturnsXml(@TempDir Path dir) throws Exception {
+        Path pdf = dir.resolve("invoice.pdf");
+        Files.write(pdf, PDF);
+        stub.respond(200, "application/xml", XML.getBytes(StandardCharsets.UTF_8));
+
+        assertEquals(XML, client().transformToXRechnung(pdf, "04011000-12345-34"));
+
+        assertEquals("/v1/transform/to/xrechnung", stub.last().uri().getPath());
+        String body = body(stub.last());
+        assertTrue(body.contains("name=\"buyerReference\"\r\n\r\n04011000-12345-34\r\n"));
+        assertEquals(2, count(body, "form-data; name="), "unset options must be omitted");
+    }
+
+    @Test
+    void transformToXRechnungSendsValidationLanguageAndNoLanguage() {
+        stub.respond(200, "application/xml", XML.getBytes(StandardCharsets.UTF_8));
+
+        client().transformToXRechnung(FileUpload.ofPdf(PDF), "04011000-12345-34",
+                new TransformToXRechnungOptions().setValidationLanguage(PdfLanguage.DE));
+
+        String body = body(stub.last());
+        assertTrue(body.contains("name=\"validationLanguage\"\r\n\r\nde\r\n"));
+        assertFalse(body.contains("name=\"language\""));
+    }
+
+    @Test
+    void transformToXRechnungRequiresABuyerReference() {
+        for (String buyerReference : new String[] {null, "", "  "}) {
+            assertThrows(IllegalArgumentException.class,
+                    () -> client().transformToXRechnung(FileUpload.ofPdf(PDF), buyerReference));
+        }
+        assertTrue(stub.requests.isEmpty());
+    }
+
+    @Test
+    void transformRateLimitMakesOneRequestAndThrows() {
+        String limited = "{\"title\":\"Too many requests\",\"errorCode\":4019}";
+        stub.respondJson(429, limited, "Retry-After", "2").respondJson(429, limited, "Retry-After", "2");
+
+        RateLimitException zugferd = assertThrows(RateLimitException.class,
+                () -> client().transformToZugferd(FileUpload.ofPdf(PDF)));
+        RateLimitException xrechnung = assertThrows(RateLimitException.class,
+                () -> client().transformToXRechnung(FileUpload.ofPdf(PDF), "04011000-12345-34"));
+
+        assertEquals(2, stub.requests.size(), "one request per call");
+        assertEquals("/v1/transform/to/zugferd", stub.requests.get(0).uri().getPath());
+        assertEquals("/v1/transform/to/xrechnung", stub.requests.get(1).uri().getPath());
+        assertTrue(sleeps.isEmpty());
+        assertEquals(Duration.ofSeconds(2), zugferd.getRetryAfter());
+        assertEquals(Duration.ofSeconds(2), xrechnung.getRetryAfter());
+        assertEquals(ErrorCodes.TOO_MANY_REQUESTS, zugferd.getErrorCode());
+    }
+
+    @Test
+    void transformRejectionCarriesFindings() {
+        stub.respondJson(400, Fixtures.resource("create-400.json"));
+
+        InvoiceValidationException e = assertThrows(InvoiceValidationException.class,
+                () -> client().transformToZugferd(FileUpload.ofPdf(PDF)));
+
+        assertEquals(ErrorCodes.MODEL_VALIDATION, e.getErrorCode());
+    }
+
     // ------------------------------------------------------------ extract
 
     @Test
@@ -528,6 +840,24 @@ class ZugferdXRechnungClientTest {
         client().createZugferd(Fixtures.invoice());
 
         assertEquals(List.of(Duration.ofSeconds(5)), sleeps);
+    }
+
+    @Test
+    void renderConvertAndReportRetryAfterRateLimit() {
+        stub.respondJson(429, "{}", "Retry-After", "1").respond(200, "application/pdf", PDF);
+        stub.respondJson(429, "{}", "Retry-After", "1").respond(200, "application/xml", XML.getBytes(StandardCharsets.UTF_8));
+        stub.respondJson(429, "{}", "Retry-After", "1").respond(200, "application/pdf", PDF, "X-Invoice-Valid", "true");
+
+        client().renderCiiToPdf(FileUpload.ofXml(XML));
+        client().convertZugferdToUbl(FileUpload.ofPdf(PDF));
+        client().validateZugferdReport(FileUpload.ofPdf(PDF));
+
+        assertEquals(List.of(
+                "/v1/render/cii/to/pdf", "/v1/render/cii/to/pdf",
+                "/v1/convert/zugferd/to/ubl", "/v1/convert/zugferd/to/ubl",
+                "/v1/validate/zugferd/report", "/v1/validate/zugferd/report"),
+            stub.requests.stream().map(request -> request.uri().getPath()).collect(Collectors.toList()));
+        assertEquals(3, sleeps.size());
     }
 
     @Test

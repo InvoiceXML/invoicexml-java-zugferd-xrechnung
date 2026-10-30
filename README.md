@@ -1,11 +1,11 @@
 # InvoiceXML ZUGFeRD and XRechnung client for Java
 
-Create, validate, embed, render and extract **ZUGFeRD** and **XRechnung** e-invoices from Java with the [InvoiceXML API](https://www.invoicexml.com). Build the invoice from typed EN 16931 models and get back a compliant ZUGFeRD PDF/A-3 or XRechnung XML (UBL or CII), already validated against the official rule set.
+Create, validate, embed, render, convert and extract **ZUGFeRD** and **XRechnung** e-invoices from Java with the [InvoiceXML API](https://www.invoicexml.com). Build the invoice from typed EN 16931 models and get back a compliant ZUGFeRD PDF/A-3 or XRechnung XML (UBL or CII), already validated against the official rule set.
 
 - Java 11 or later, `java.net.http.HttpClient`, Jackson as the only dependency
 - Typed EN 16931 invoice model generated from the API's OpenAPI schema
 - Rejected invoices surface the violated rules as typed findings
-- Automatic retry on HTTP 429, honouring `Retry-After`
+- Automatic retry on HTTP 429 on every call except transform, honouring `Retry-After`
 
 ## Installation
 
@@ -63,11 +63,25 @@ Totals and the VAT breakdown are calculated from the lines. The PDF is a ZUGFeRD
 | `createXRechnung(invoice[, options])` | `POST /v1/create/xrechnung` | XRechnung XML (`String`) |
 | `validateZugferd(pdf)` | `POST /v1/validate/zugferd` | `ValidationResult` |
 | `validateXRechnung(xml)` | `POST /v1/validate/xrechnung` | `ValidationResult` |
+| `validateZugferdReport(pdf[, options])` | `POST /v1/validate/zugferd/report` | `ValidationReport` |
+| `validateXRechnungReport(xml[, options])` | `POST /v1/validate/xrechnung/report` | `ValidationReport` |
 | `embedZugferd(pdf, xml[, options])` | `POST /v1/embed/zugferd` | ZUGFeRD PDF/A-3 (`byte[]`) |
 | `emailZugferd(invoice, email[, options])` | `POST /v1/create/zugferd/email` | `EmailSendResult` |
 | `emailXRechnung(invoice, email[, options])` | `POST /v1/create/xrechnung/email` | `EmailSendResult` |
 | `emailEmbeddedZugferd(pdf, xml, email)` | `POST /v1/embed/zugferd/email` | `EmailSendResult` |
 | `renderXRechnungToPdf(xml[, options])` | `POST /v1/render/xrechnung/to/pdf` | Readable PDF (`byte[]`) |
+| `renderCiiToPdf(xml[, options])` | `POST /v1/render/cii/to/pdf` | Readable PDF (`byte[]`) |
+| `convertZugferdToUbl(pdf[, options])` | `POST /v1/convert/zugferd/to/ubl` | UBL XML (`String`) |
+| `convertZugferdToCii(pdf[, options])` | `POST /v1/convert/zugferd/to/cii` | CII XML (`String`) |
+| `convertXRechnungToUbl(xml[, options])` | `POST /v1/convert/xrechnung/to/ubl` | UBL XML (`String`) |
+| `convertXRechnungToCii(xml[, options])` | `POST /v1/convert/xrechnung/to/cii` | CII XML (`String`) |
+| `convertUblToXRechnung(xml[, options])` | `POST /v1/convert/ubl/to/xrechnung` | XRechnung XML (`String`) |
+| `convertCiiToXRechnung(xml[, options])` | `POST /v1/convert/cii/to/xrechnung` | XRechnung XML (`String`) |
+| `convertCiiToZugferd(xml[, options])` | `POST /v1/convert/cii/to/zugferd` | ZUGFeRD PDF/A-3 (`byte[]`) |
+| `convertUblToZugferd(xml[, options])` | `POST /v1/convert/ubl/to/zugferd` | ZUGFeRD PDF/A-3 (`byte[]`) |
+| `convertXRechnungToZugferd(xml[, options])` | `POST /v1/convert/xrechnung/to/zugferd` | ZUGFeRD PDF/A-3 (`byte[]`) |
+| `transformToZugferd(pdf[, options])` | `POST /v1/transform/to/zugferd` | ZUGFeRD PDF/A-3 (`byte[]`), check before use |
+| `transformToXRechnung(pdf, buyerReference[, options])` | `POST /v1/transform/to/xrechnung` | XRechnung XML (`String`), check before use |
 | `extractJson(file)` | `POST /v1/extract/json` | `InvoiceDocument` |
 | `extractAttachments(file)` | `POST /v1/extract/attachments` | ZIP of embedded documents (`byte[]`) |
 
@@ -104,7 +118,7 @@ System.out.println(sent.getMessageId());
 
 `emailXRechnung(invoice, email)` sends an XRechnung the same way, and `emailEmbeddedZugferd(pdf, xml, email)` sends a ZUGFeRD PDF built from your own PDF and CII XML, always with full validation. The subject and message are optional, and a sensible default applies when you leave them out.
 
-The result carries the message id, not the file. `accepted` means the email was handed over for delivery, not that the recipient's server has received it yet. Only HTTP 429 is retried on these calls, so a failed call never sends a second email by itself. After an `InvoiceXmlConnectionException`, or a 503 with `ErrorCodes.PROCESSING_TIMEOUT` (4023), which can happen while the send is in flight, the email may or may not have gone out, so check before you send it again.
+The result carries the message id, not the file. `accepted` means the email was handed over for delivery, not that the recipient's server has received it yet. Only HTTP 429 is retried on these calls, so a failed call never sends a second email by itself. After an `InvoiceXmlConnectionException` the email may or may not have gone out, so check before you send it again.
 
 A refused send raises `InvoiceXmlApiException`. Branch on `getErrorCode()`: `ErrorCodes.EMAIL_DOMAIN_NOT_VERIFIED`, `ErrorCodes.EMAIL_SENDING_DISABLED`, or `ErrorCodes.EMAIL_NOT_IN_PLAN` when your plan does not include this (see [pricing](https://www.invoicexml.com/pricing)). A bad address raises `InvoiceValidationException` with the field in its findings. See the [email guide](https://www.invoicexml.com/docs/api/create/zugferd/email) for the details.
 
@@ -137,6 +151,60 @@ if (!result.isValid()) {
 
 The result also carries the detected profile, the schema and Schematron verdicts, and a field report with one row per invoice field.
 
+## Validation reports
+
+`validateZugferdReport` and `validateXRechnungReport` run the same validation and return a printable PDF report with the verdict. A failed verdict is a normal result, not an exception:
+
+```java
+ValidationReport report = client.validateZugferdReport(FileUpload.of(Path.of("incoming.pdf")),
+    new ReportOptions().setValidationLanguage(PdfLanguage.DE));
+
+Files.write(Path.of("report.pdf"), report.getFile());
+if (Boolean.FALSE.equals(report.getValid())) {
+    System.out.println("The invoice failed validation");
+}
+```
+
+`getValid()` is `true`, `false`, or `null` when the response carries no verdict. A missing or malformed file still raises an exception. See the [ZUGFeRD report](https://www.invoicexml.com/docs/api/validate/zugferd/report) and [XRechnung report](https://www.invoicexml.com/docs/api/validate/xrechnung/report) guides.
+
+## Render an invoice as PDF
+
+`renderXRechnungToPdf` and `renderCiiToPdf` turn an invoice XML into a readable PDF:
+
+```java
+byte[] pdf = client.renderXRechnungToPdf(FileUpload.of(Path.of("rechnung.xml")), new RenderOptions()
+    .setLanguage(PdfLanguage.DE)
+    .setLogoUrl("https://example.com/logo.png")
+    .setIncludeQrCode(true));
+```
+
+English is the default language, and the logo and the EPC payment QR code are optional. See the [XRechnung](https://www.invoicexml.com/docs/api/render/xrechnung/to/pdf) and [CII](https://www.invoicexml.com/docs/api/render/cii/to/pdf) guides.
+
+## Convert between formats
+
+Each conversion has its own method, named after its route. Conversions to XML return a `String`, conversions to ZUGFeRD return the PDF:
+
+```java
+String ubl = client.convertZugferdToUbl(Path.of("rechnung.pdf"));
+String xrechnung = client.convertCiiToXRechnung(Path.of("rechnung.xml"));
+byte[] pdf = client.convertCiiToZugferd(FileUpload.of(Path.of("rechnung.xml")),
+    new ConvertToPdfOptions().setLanguage(PdfLanguage.DE));
+```
+
+The result is validated before it is returned, and a rejected conversion throws `InvoiceValidationException`. `setValidationLanguage` on `ConvertOptions` or `ConvertToPdfOptions` words its findings. See the [convert guide](https://www.invoicexml.com/docs/api/convert/zugferd/to/ubl) for the details.
+
+## Transform a PDF invoice
+
+`transformToZugferd` and `transformToXRechnung` build an e-invoice from a PDF invoice. AI reads the PDF, so a person must check the result before it is used.
+
+```java
+byte[] zugferd = client.transformToZugferd(FileUpload.of(Path.of("invoice.pdf")), new TransformOptions()
+    .setLanguage(PdfLanguage.DE));
+String xrechnung = client.transformToXRechnung(Path.of("invoice.pdf"), "04011000-12345-34");
+```
+
+Without a language, the PDF uses the language the invoice is written in. `setPreserveOriginalPdf(true)` keeps the uploaded pages and only embeds the XML. Otherwise the PDF is rendered fresh and ends with an Electronic invoice details section for checking the technical values, which `setIncludeAdvancedProperties(false)` leaves out. A 429 on these methods is not retried automatically, so wait for `Retry-After` before calling again if you want to retry. See the [ZUGFeRD](https://www.invoicexml.com/docs/api/transform/to/zugferd) and [XRechnung](https://www.invoicexml.com/docs/api/transform/to/xrechnung) guides.
+
 ## Errors, rate limits and retries
 
 All exceptions are unchecked and extend `InvoiceXmlException`.
@@ -146,11 +214,11 @@ All exceptions are unchecked and extend `InvoiceXmlException`.
 | `InvoiceValidationException` | HTTP 400 with rule findings |
 | `AuthenticationException` | HTTP 401, the API key is missing or inactive |
 | `PayloadTooLargeException` | HTTP 413, a file exceeds 20 MB |
-| `RateLimitException` | HTTP 429 after the automatic retries |
+| `RateLimitException` | HTTP 429 after any automatic retries |
 | `InvoiceXmlApiException` | Any other error response, with `getErrorCode()` from `ErrorCodes` |
 | `InvoiceXmlConnectionException` | The API could not be reached |
 
-On HTTP 429 the client waits for the `Retry-After` delay and retries, three times by default. Rate-limited requests consume no credits.
+On HTTP 429 every call except transform waits for the `Retry-After` delay and retries, three times by default. A 429 is not billed.
 
 ```java
 var client = ZugferdXRechnungClient.builder()

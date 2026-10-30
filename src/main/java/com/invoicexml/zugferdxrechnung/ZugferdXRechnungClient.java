@@ -7,10 +7,12 @@ import com.invoicexml.zugferdxrechnung.email.EmailSendResult;
 import com.invoicexml.zugferdxrechnung.model.CreateInvoiceRequest;
 import com.invoicexml.zugferdxrechnung.model.InvoiceDocument;
 import com.invoicexml.zugferdxrechnung.model.InvoiceOptions;
+import com.invoicexml.zugferdxrechnung.model.PdfLanguage;
 import com.invoicexml.zugferdxrechnung.transport.HttpTransport;
 import com.invoicexml.zugferdxrechnung.transport.JdkHttpTransport;
 import com.invoicexml.zugferdxrechnung.transport.TransportRequest;
 import com.invoicexml.zugferdxrechnung.transport.TransportResponse;
+import com.invoicexml.zugferdxrechnung.validation.ValidationReport;
 import com.invoicexml.zugferdxrechnung.validation.ValidationResult;
 import java.io.IOException;
 import java.io.InputStream;
@@ -43,7 +45,7 @@ import java.util.Properties;
  * {@link InvoiceValidationException} listing the violated rules.
  *
  * <p>HTTP 429 responses are retried automatically after the {@code Retry-After}
- * delay. Other errors raise an {@link InvoiceXmlApiException} subclass, and
+ * delay, except on transform calls. Other errors raise an {@link InvoiceXmlApiException} subclass, and
  * network failures raise an {@link InvoiceXmlConnectionException}. All are unchecked.
  *
  * <p>Instances are immutable and thread-safe. Create one and share it.
@@ -231,6 +233,76 @@ public final class ZugferdXRechnungClient {
         return postMultipartForJson("/v1/validate/xrechnung", new Multipart().file("file", xml), ValidationResult.class);
     }
 
+    /**
+     * Validates a ZUGFeRD PDF like {@link #validateZugferd(Path)} and returns a printable
+     * PDF report with the verdict. An invalid invoice is a normal result, not an
+     * exception, and so is a PDF without embedded XML, which gets a report saying so.
+     *
+     * @param pdf the PDF file
+     * @return the report; check {@link ValidationReport#getValid()}
+     */
+    public ValidationReport validateZugferdReport(Path pdf) {
+        return validateZugferdReport(FileUpload.of(pdf), null);
+    }
+
+    /**
+     * Validates a ZUGFeRD PDF upload and returns a printable PDF report with the verdict.
+     *
+     * @param pdf the PDF upload
+     * @return the report; check {@link ValidationReport#getValid()}
+     * @see #validateZugferdReport(Path)
+     */
+    public ValidationReport validateZugferdReport(FileUpload pdf) {
+        return validateZugferdReport(pdf, null);
+    }
+
+    /**
+     * Validates a ZUGFeRD PDF upload and returns a printable PDF report with options.
+     *
+     * @param pdf the PDF upload
+     * @param options the options, or {@code null} for the defaults
+     * @return the report; check {@link ValidationReport#getValid()}
+     * @see #validateZugferdReport(Path)
+     */
+    public ValidationReport validateZugferdReport(FileUpload pdf, ReportOptions options) {
+        return postReport("/v1/validate/zugferd/report", pdf, options);
+    }
+
+    /**
+     * Validates an XRechnung XML file (UBL or CII) like {@link #validateXRechnung(Path)}
+     * and returns a printable PDF report with the verdict. An invalid invoice is a
+     * normal result, not an exception.
+     *
+     * @param xml the XML file
+     * @return the report; check {@link ValidationReport#getValid()}
+     */
+    public ValidationReport validateXRechnungReport(Path xml) {
+        return validateXRechnungReport(FileUpload.of(xml), null);
+    }
+
+    /**
+     * Validates an XRechnung XML upload and returns a printable PDF report with the verdict.
+     *
+     * @param xml the XML upload
+     * @return the report; check {@link ValidationReport#getValid()}
+     * @see #validateXRechnungReport(Path)
+     */
+    public ValidationReport validateXRechnungReport(FileUpload xml) {
+        return validateXRechnungReport(xml, null);
+    }
+
+    /**
+     * Validates an XRechnung XML upload and returns a printable PDF report with options.
+     *
+     * @param xml the XML upload
+     * @param options the options, or {@code null} for the defaults
+     * @return the report; check {@link ValidationReport#getValid()}
+     * @see #validateXRechnungReport(Path)
+     */
+    public ValidationReport validateXRechnungReport(FileUpload xml, ReportOptions options) {
+        return postReport("/v1/validate/xrechnung/report", xml, options);
+    }
+
     // ----------------------------------------------------------------- embed
 
     /**
@@ -289,9 +361,8 @@ public final class ZugferdXRechnungClient {
      * delivery, not that the recipient's server has received it yet.
      *
      * <p>Only HTTP 429 is retried, because nothing was sent. After an
-     * {@link InvoiceXmlConnectionException}, or a 503 with
-     * {@link ErrorCodes#PROCESSING_TIMEOUT}, which can happen while the send is in
-     * flight, the email may or may not have gone out, so check before you send it again.
+     * {@link InvoiceXmlConnectionException} the email may or may not have gone out,
+     * so check before you send it again.
      *
      * @param invoice the invoice
      * @param email the sender, recipient and optional texts
@@ -445,14 +516,502 @@ public final class ZugferdXRechnungClient {
      * @see #renderXRechnungToPdf(Path)
      */
     public byte[] renderXRechnungToPdf(FileUpload xml, RenderOptions options) {
-        Multipart form = new Multipart().file("file", xml);
+        return render("/v1/render/xrechnung/to/pdf", xml, options);
+    }
+
+    /**
+     * Renders a CII invoice XML, such as the XML of a ZUGFeRD invoice, as a
+     * human-readable PDF.
+     *
+     * @param xml the CII XML file
+     * @return the PDF bytes
+     */
+    public byte[] renderCiiToPdf(Path xml) {
+        return renderCiiToPdf(FileUpload.of(xml), null);
+    }
+
+    /**
+     * Renders a CII invoice XML upload as a human-readable PDF.
+     *
+     * @param xml the CII XML upload
+     * @return the PDF bytes
+     * @see #renderCiiToPdf(Path)
+     */
+    public byte[] renderCiiToPdf(FileUpload xml) {
+        return renderCiiToPdf(xml, null);
+    }
+
+    /**
+     * Renders a CII invoice XML upload as a human-readable PDF with options.
+     *
+     * @param xml the CII XML upload
+     * @param options the options, or {@code null} for the defaults
+     * @return the PDF bytes
+     * @see #renderCiiToPdf(Path)
+     */
+    public byte[] renderCiiToPdf(FileUpload xml, RenderOptions options) {
+        return render("/v1/render/cii/to/pdf", xml, options);
+    }
+
+    // --------------------------------------------------------------- convert
+
+    /**
+     * Converts a ZUGFeRD PDF to UBL 2.1 XML. The XML embedded in the PDF is read and
+     * transcoded, and the result is validated before it is returned.
+     *
+     * @param pdf the ZUGFeRD PDF
+     * @return the XML document
+     * @throws InvoiceValidationException when the result violates the rule set
+     * @throws InvoiceXmlApiException with {@link ErrorCodes#NO_EMBEDDED_XML} when the PDF carries no XML
+     */
+    public String convertZugferdToUbl(Path pdf) {
+        return convertZugferdToUbl(FileUpload.of(pdf), null);
+    }
+
+    /**
+     * Converts a ZUGFeRD PDF upload to UBL 2.1 XML.
+     *
+     * @param pdf the ZUGFeRD PDF upload
+     * @return the XML document
+     * @throws InvoiceValidationException when the result violates the rule set
+     * @see #convertZugferdToUbl(Path)
+     */
+    public String convertZugferdToUbl(FileUpload pdf) {
+        return convertZugferdToUbl(pdf, null);
+    }
+
+    /**
+     * Converts a ZUGFeRD PDF upload to UBL 2.1 XML with options.
+     *
+     * @param pdf the ZUGFeRD PDF upload
+     * @param options the options, or {@code null} for the defaults
+     * @return the XML document
+     * @throws InvoiceValidationException when the result violates the rule set
+     * @see #convertZugferdToUbl(Path)
+     */
+    public String convertZugferdToUbl(FileUpload pdf, ConvertOptions options) {
+        return convertToXml("/v1/convert/zugferd/to/ubl", pdf, options);
+    }
+
+    /**
+     * Converts a ZUGFeRD PDF to CII XML. The XML embedded in the PDF is read and
+     * rebuilt, and the result is validated before it is returned.
+     *
+     * @param pdf the ZUGFeRD PDF
+     * @return the XML document
+     * @throws InvoiceValidationException when the result violates the rule set
+     * @throws InvoiceXmlApiException with {@link ErrorCodes#NO_EMBEDDED_XML} when the PDF carries no XML
+     */
+    public String convertZugferdToCii(Path pdf) {
+        return convertZugferdToCii(FileUpload.of(pdf), null);
+    }
+
+    /**
+     * Converts a ZUGFeRD PDF upload to CII XML.
+     *
+     * @param pdf the ZUGFeRD PDF upload
+     * @return the XML document
+     * @throws InvoiceValidationException when the result violates the rule set
+     * @see #convertZugferdToCii(Path)
+     */
+    public String convertZugferdToCii(FileUpload pdf) {
+        return convertZugferdToCii(pdf, null);
+    }
+
+    /**
+     * Converts a ZUGFeRD PDF upload to CII XML with options.
+     *
+     * @param pdf the ZUGFeRD PDF upload
+     * @param options the options, or {@code null} for the defaults
+     * @return the XML document
+     * @throws InvoiceValidationException when the result violates the rule set
+     * @see #convertZugferdToCii(Path)
+     */
+    public String convertZugferdToCii(FileUpload pdf, ConvertOptions options) {
+        return convertToXml("/v1/convert/zugferd/to/cii", pdf, options);
+    }
+
+    /**
+     * Converts an XRechnung (UBL or CII) to plain EN 16931 UBL 2.1 XML. The result
+     * declares EN 16931 instead of the XRechnung specification.
+     *
+     * @param xml the XRechnung XML
+     * @return the XML document
+     * @throws InvoiceValidationException when the result violates the rule set
+     */
+    public String convertXRechnungToUbl(Path xml) {
+        return convertXRechnungToUbl(FileUpload.of(xml), null);
+    }
+
+    /**
+     * Converts an XRechnung upload to plain EN 16931 UBL 2.1 XML.
+     *
+     * @param xml the XRechnung XML upload
+     * @return the XML document
+     * @throws InvoiceValidationException when the result violates the rule set
+     * @see #convertXRechnungToUbl(Path)
+     */
+    public String convertXRechnungToUbl(FileUpload xml) {
+        return convertXRechnungToUbl(xml, null);
+    }
+
+    /**
+     * Converts an XRechnung upload to plain EN 16931 UBL 2.1 XML with options.
+     *
+     * @param xml the XRechnung XML upload
+     * @param options the options, or {@code null} for the defaults
+     * @return the XML document
+     * @throws InvoiceValidationException when the result violates the rule set
+     * @see #convertXRechnungToUbl(Path)
+     */
+    public String convertXRechnungToUbl(FileUpload xml, ConvertOptions options) {
+        return convertToXml("/v1/convert/xrechnung/to/ubl", xml, options);
+    }
+
+    /**
+     * Converts an XRechnung (UBL or CII) to plain EN 16931 CII XML. The result
+     * declares EN 16931 instead of the XRechnung specification.
+     *
+     * @param xml the XRechnung XML
+     * @return the XML document
+     * @throws InvoiceValidationException when the result violates the rule set
+     */
+    public String convertXRechnungToCii(Path xml) {
+        return convertXRechnungToCii(FileUpload.of(xml), null);
+    }
+
+    /**
+     * Converts an XRechnung upload to plain EN 16931 CII XML.
+     *
+     * @param xml the XRechnung XML upload
+     * @return the XML document
+     * @throws InvoiceValidationException when the result violates the rule set
+     * @see #convertXRechnungToCii(Path)
+     */
+    public String convertXRechnungToCii(FileUpload xml) {
+        return convertXRechnungToCii(xml, null);
+    }
+
+    /**
+     * Converts an XRechnung upload to plain EN 16931 CII XML with options.
+     *
+     * @param xml the XRechnung XML upload
+     * @param options the options, or {@code null} for the defaults
+     * @return the XML document
+     * @throws InvoiceValidationException when the result violates the rule set
+     * @see #convertXRechnungToCii(Path)
+     */
+    public String convertXRechnungToCii(FileUpload xml, ConvertOptions options) {
+        return convertToXml("/v1/convert/xrechnung/to/cii", xml, options);
+    }
+
+    /**
+     * Converts UBL 2.1 XML to an XRechnung in UBL syntax. The XRechnung rules apply,
+     * so the source must carry what they require, such as the Leitweg-ID.
+     *
+     * @param xml the UBL XML
+     * @return the XML document
+     * @throws InvoiceValidationException when the result violates the rule set
+     */
+    public String convertUblToXRechnung(Path xml) {
+        return convertUblToXRechnung(FileUpload.of(xml), null);
+    }
+
+    /**
+     * Converts a UBL 2.1 XML upload to an XRechnung in UBL syntax.
+     *
+     * @param xml the UBL XML upload
+     * @return the XML document
+     * @throws InvoiceValidationException when the result violates the rule set
+     * @see #convertUblToXRechnung(Path)
+     */
+    public String convertUblToXRechnung(FileUpload xml) {
+        return convertUblToXRechnung(xml, null);
+    }
+
+    /**
+     * Converts a UBL 2.1 XML upload to an XRechnung in UBL syntax with options.
+     *
+     * @param xml the UBL XML upload
+     * @param options the options, or {@code null} for the defaults
+     * @return the XML document
+     * @throws InvoiceValidationException when the result violates the rule set
+     * @see #convertUblToXRechnung(Path)
+     */
+    public String convertUblToXRechnung(FileUpload xml, ConvertOptions options) {
+        return convertToXml("/v1/convert/ubl/to/xrechnung", xml, options);
+    }
+
+    /**
+     * Converts CII XML to an XRechnung in UBL syntax. The XRechnung rules apply,
+     * so the source must carry what they require, such as the Leitweg-ID.
+     *
+     * @param xml the CII XML
+     * @return the XML document
+     * @throws InvoiceValidationException when the result violates the rule set
+     */
+    public String convertCiiToXRechnung(Path xml) {
+        return convertCiiToXRechnung(FileUpload.of(xml), null);
+    }
+
+    /**
+     * Converts a CII XML upload to an XRechnung in UBL syntax.
+     *
+     * @param xml the CII XML upload
+     * @return the XML document
+     * @throws InvoiceValidationException when the result violates the rule set
+     * @see #convertCiiToXRechnung(Path)
+     */
+    public String convertCiiToXRechnung(FileUpload xml) {
+        return convertCiiToXRechnung(xml, null);
+    }
+
+    /**
+     * Converts a CII XML upload to an XRechnung in UBL syntax with options.
+     *
+     * @param xml the CII XML upload
+     * @param options the options, or {@code null} for the defaults
+     * @return the XML document
+     * @throws InvoiceValidationException when the result violates the rule set
+     * @see #convertCiiToXRechnung(Path)
+     */
+    public String convertCiiToXRechnung(FileUpload xml, ConvertOptions options) {
+        return convertToXml("/v1/convert/cii/to/xrechnung", xml, options);
+    }
+
+    /**
+     * Converts CII XML to a ZUGFeRD PDF/A-3: a PDF is rendered from the invoice and
+     * the XML embedded into it, after validation with the full rule set.
+     *
+     * @param xml the CII XML
+     * @return the hybrid PDF bytes
+     * @throws InvoiceValidationException when the result violates the rule set
+     */
+    public byte[] convertCiiToZugferd(Path xml) {
+        return convertCiiToZugferd(FileUpload.of(xml), null);
+    }
+
+    /**
+     * Converts a CII XML upload to a ZUGFeRD PDF/A-3.
+     *
+     * @param xml the CII XML upload
+     * @return the hybrid PDF bytes
+     * @throws InvoiceValidationException when the result violates the rule set
+     * @see #convertCiiToZugferd(Path)
+     */
+    public byte[] convertCiiToZugferd(FileUpload xml) {
+        return convertCiiToZugferd(xml, null);
+    }
+
+    /**
+     * Converts a CII XML upload to a ZUGFeRD PDF/A-3 with options.
+     *
+     * @param xml the CII XML upload
+     * @param options the options, or {@code null} for the defaults
+     * @return the hybrid PDF bytes
+     * @throws InvoiceValidationException when the result violates the rule set
+     * @see #convertCiiToZugferd(Path)
+     */
+    public byte[] convertCiiToZugferd(FileUpload xml, ConvertToPdfOptions options) {
+        return convertToPdf("/v1/convert/cii/to/zugferd", xml, options);
+    }
+
+    /**
+     * Converts UBL 2.1 XML to a ZUGFeRD PDF/A-3: a PDF is rendered from the invoice
+     * and the invoice embedded into it as CII XML, after validation with the full rule set.
+     *
+     * @param xml the UBL XML
+     * @return the hybrid PDF bytes
+     * @throws InvoiceValidationException when the result violates the rule set
+     */
+    public byte[] convertUblToZugferd(Path xml) {
+        return convertUblToZugferd(FileUpload.of(xml), null);
+    }
+
+    /**
+     * Converts a UBL 2.1 XML upload to a ZUGFeRD PDF/A-3.
+     *
+     * @param xml the UBL XML upload
+     * @return the hybrid PDF bytes
+     * @throws InvoiceValidationException when the result violates the rule set
+     * @see #convertUblToZugferd(Path)
+     */
+    public byte[] convertUblToZugferd(FileUpload xml) {
+        return convertUblToZugferd(xml, null);
+    }
+
+    /**
+     * Converts a UBL 2.1 XML upload to a ZUGFeRD PDF/A-3 with options.
+     *
+     * @param xml the UBL XML upload
+     * @param options the options, or {@code null} for the defaults
+     * @return the hybrid PDF bytes
+     * @throws InvoiceValidationException when the result violates the rule set
+     * @see #convertUblToZugferd(Path)
+     */
+    public byte[] convertUblToZugferd(FileUpload xml, ConvertToPdfOptions options) {
+        return convertToPdf("/v1/convert/ubl/to/zugferd", xml, options);
+    }
+
+    /**
+     * Converts an XRechnung (UBL or CII) to a ZUGFeRD PDF/A-3: a PDF is rendered from
+     * the invoice and the invoice embedded into it as CII XML, after validation with
+     * the full rule set.
+     *
+     * @param xml the XRechnung XML
+     * @return the hybrid PDF bytes
+     * @throws InvoiceValidationException when the result violates the rule set
+     */
+    public byte[] convertXRechnungToZugferd(Path xml) {
+        return convertXRechnungToZugferd(FileUpload.of(xml), null);
+    }
+
+    /**
+     * Converts an XRechnung upload to a ZUGFeRD PDF/A-3.
+     *
+     * @param xml the XRechnung XML upload
+     * @return the hybrid PDF bytes
+     * @throws InvoiceValidationException when the result violates the rule set
+     * @see #convertXRechnungToZugferd(Path)
+     */
+    public byte[] convertXRechnungToZugferd(FileUpload xml) {
+        return convertXRechnungToZugferd(xml, null);
+    }
+
+    /**
+     * Converts an XRechnung upload to a ZUGFeRD PDF/A-3 with options.
+     *
+     * @param xml the XRechnung XML upload
+     * @param options the options, or {@code null} for the defaults
+     * @return the hybrid PDF bytes
+     * @throws InvoiceValidationException when the result violates the rule set
+     * @see #convertXRechnungToZugferd(Path)
+     */
+    public byte[] convertXRechnungToZugferd(FileUpload xml, ConvertToPdfOptions options) {
+        return convertToPdf("/v1/convert/xrechnung/to/zugferd", xml, options);
+    }
+
+    // ------------------------------------------------------------- transform
+
+    /**
+     * Reads a PDF invoice and returns a ZUGFeRD PDF/A-3. AI reads the PDF, so a person
+     * must check the result before it is used.
+     *
+     * <p>By default the PDF is rendered fresh from the data read and ends with an
+     * Electronic invoice details section, so the technical values can be checked on
+     * the pages.
+     *
+     * <p>A 429 on this method is not retried automatically, so wait for
+     * {@code Retry-After} before calling again if you want to retry.
+     *
+     * @param pdf the PDF invoice
+     * @return the hybrid PDF bytes
+     * @throws InvoiceValidationException when the result violates the rule set
+     */
+    public byte[] transformToZugferd(Path pdf) {
+        return transformToZugferd(FileUpload.of(pdf), null);
+    }
+
+    /**
+     * Reads a PDF invoice upload and returns a ZUGFeRD PDF/A-3. AI reads the PDF, so a
+     * person must check the result before it is used.
+     *
+     * <p>A 429 on this method is not retried automatically, so wait for
+     * {@code Retry-After} before calling again if you want to retry.
+     *
+     * @param pdf the PDF upload
+     * @return the hybrid PDF bytes
+     * @throws InvoiceValidationException when the result violates the rule set
+     * @see #transformToZugferd(Path)
+     */
+    public byte[] transformToZugferd(FileUpload pdf) {
+        return transformToZugferd(pdf, null);
+    }
+
+    /**
+     * Reads a PDF invoice upload and returns a ZUGFeRD PDF/A-3 with options. AI reads
+     * the PDF, so a person must check the result before it is used.
+     *
+     * <p>A 429 on this method is not retried automatically, so wait for
+     * {@code Retry-After} before calling again if you want to retry.
+     *
+     * @param pdf the PDF upload
+     * @param options the options, or {@code null} for the defaults
+     * @return the hybrid PDF bytes
+     * @throws InvoiceValidationException when the result violates the rule set
+     * @see #transformToZugferd(Path)
+     */
+    public byte[] transformToZugferd(FileUpload pdf, TransformOptions options) {
+        Multipart form = new Multipart().file("file", pdf);
         if (options != null) {
-            if (options.getLanguage() != null) {
-                form.field("language", options.getLanguage().name().toLowerCase(Locale.ROOT));
-            }
-            form.field("logoUrl", options.getLogoUrl());
+            form.field("language", language(options.getLanguage()));
+            form.field("preserveOriginalPdf", flag(options.getPreserveOriginalPdf()));
+            form.field("includeAdvancedProperties", flag(options.getIncludeAdvancedProperties()));
+            form.field("validationLanguage", language(options.getValidationLanguage()));
         }
-        return postMultipart("/v1/render/xrechnung/to/pdf", form, null).body();
+        return postMultipartOnce("/v1/transform/to/zugferd", form).body();
+    }
+
+    /**
+     * Reads a PDF invoice and returns an XRechnung XML. AI reads the PDF, so a person
+     * must check the result before it is used.
+     *
+     * <p>A 429 on this method is not retried automatically, so wait for
+     * {@code Retry-After} before calling again if you want to retry.
+     *
+     * @param pdf the PDF invoice
+     * @param buyerReference the buyer reference, for German public buyers the Leitweg-ID;
+     *        it takes precedence over any reference on the PDF
+     * @return the XML document
+     * @throws IllegalArgumentException when the buyer reference is null, empty or blank
+     * @throws InvoiceValidationException when the result violates the rule set
+     */
+    public String transformToXRechnung(Path pdf, String buyerReference) {
+        return transformToXRechnung(FileUpload.of(pdf), buyerReference, null);
+    }
+
+    /**
+     * Reads a PDF invoice upload and returns an XRechnung XML. AI reads the PDF, so a
+     * person must check the result before it is used.
+     *
+     * <p>A 429 on this method is not retried automatically, so wait for
+     * {@code Retry-After} before calling again if you want to retry.
+     *
+     * @param pdf the PDF upload
+     * @param buyerReference the buyer reference, for German public buyers the Leitweg-ID
+     * @return the XML document
+     * @throws IllegalArgumentException when the buyer reference is null, empty or blank
+     * @throws InvoiceValidationException when the result violates the rule set
+     * @see #transformToXRechnung(Path, String)
+     */
+    public String transformToXRechnung(FileUpload pdf, String buyerReference) {
+        return transformToXRechnung(pdf, buyerReference, null);
+    }
+
+    /**
+     * Reads a PDF invoice upload and returns an XRechnung XML with options. AI reads
+     * the PDF, so a person must check the result before it is used.
+     *
+     * <p>A 429 on this method is not retried automatically, so wait for
+     * {@code Retry-After} before calling again if you want to retry.
+     *
+     * @param pdf the PDF upload
+     * @param buyerReference the buyer reference, for German public buyers the Leitweg-ID
+     * @param options the options, or {@code null} for the defaults
+     * @return the XML document
+     * @throws IllegalArgumentException when the buyer reference is null, empty or blank
+     * @throws InvoiceValidationException when the result violates the rule set
+     * @see #transformToXRechnung(Path, String)
+     */
+    public String transformToXRechnung(FileUpload pdf, String buyerReference, TransformToXRechnungOptions options) {
+        if (buyerReference == null || buyerReference.isBlank()) {
+            throw new IllegalArgumentException("buyerReference must not be empty");
+        }
+        Multipart form = new Multipart().file("file", pdf).field("buyerReference", buyerReference);
+        if (options != null) {
+            form.field("validationLanguage", language(options.getValidationLanguage()));
+        }
+        return new String(postMultipartOnce("/v1/transform/to/xrechnung", form).body(), StandardCharsets.UTF_8);
     }
 
     // --------------------------------------------------------------- extract
@@ -506,6 +1065,60 @@ public final class ZugferdXRechnungClient {
     }
 
     // -------------------------------------------------------------- plumbing
+
+    private byte[] render(String path, FileUpload xml, RenderOptions options) {
+        Multipart form = new Multipart().file("file", xml);
+        if (options != null) {
+            form.field("language", language(options.getLanguage()));
+            form.field("logoUrl", options.getLogoUrl());
+            form.field("includeQrCode", flag(options.getIncludeQrCode()));
+        }
+        return postMultipart(path, form, null).body();
+    }
+
+    private String convertToXml(String path, FileUpload file, ConvertOptions options) {
+        Multipart form = new Multipart().file("file", file);
+        if (options != null) {
+            form.field("validationLanguage", language(options.getValidationLanguage()));
+        }
+        return new String(postMultipart(path, form, null).body(), StandardCharsets.UTF_8);
+    }
+
+    private byte[] convertToPdf(String path, FileUpload xml, ConvertToPdfOptions options) {
+        Multipart form = new Multipart().file("file", xml);
+        if (options != null) {
+            form.field("language", language(options.getLanguage()));
+            form.field("validationLanguage", language(options.getValidationLanguage()));
+        }
+        return postMultipart(path, form, null).body();
+    }
+
+    private ValidationReport postReport(String path, FileUpload file, ReportOptions options) {
+        Multipart form = new Multipart().file("file", file);
+        if (options != null) {
+            form.field("validationLanguage", language(options.getValidationLanguage()));
+        }
+        TransportResponse response = postMultipart(path, form, null);
+        return new ValidationReport(response.body(), verdict(response.header("X-Invoice-Valid")));
+    }
+
+    /** The verdict header's value, {@code null} when it is missing or says neither. */
+    private static Boolean verdict(String header) {
+        if ("true".equalsIgnoreCase(header)) {
+            return Boolean.TRUE;
+        }
+        return "false".equalsIgnoreCase(header) ? Boolean.FALSE : null;
+    }
+
+    /** The form value of a language, {@code null} (not sent) when unset. */
+    private static String language(PdfLanguage language) {
+        return language == null ? null : language.name().toLowerCase(Locale.ROOT);
+    }
+
+    /** The form value of a switch, {@code null} (not sent) when unset. */
+    private static String flag(Boolean value) {
+        return value == null ? null : value.toString();
+    }
 
     /** The email as sent on every route: blank copy addresses dropped, the others trimmed. */
     private static EmailMessage wireEmail(EmailMessage email) {
@@ -575,6 +1188,10 @@ public final class ZugferdXRechnungClient {
         return execute(path, form.contentType(), form.build(), accept);
     }
 
+    private TransportResponse postMultipartOnce(String path, Multipart form) {
+        return execute(path, form.contentType(), form.build(), null, 0);
+    }
+
     private <T> T postMultipartForJson(String path, Multipart form, Class<T> type) {
         return readJson(path, postMultipart(path, form, "application/json"), type);
     }
@@ -588,6 +1205,10 @@ public final class ZugferdXRechnungClient {
     }
 
     private TransportResponse execute(String path, String contentType, byte[] body, String accept) {
+        return execute(path, contentType, body, accept, maxRetries);
+    }
+
+    private TransportResponse execute(String path, String contentType, byte[] body, String accept, int retries) {
         Map<String, String> headers = new LinkedHashMap<>();
         headers.put("Authorization", "Bearer " + apiKey);
         headers.put("Content-Type", contentType);
@@ -611,7 +1232,7 @@ public final class ZugferdXRechnungClient {
             if (status >= 200 && status < 300) {
                 return response;
             }
-            if (status == 429 && attempt < maxRetries) {
+            if (status == 429 && attempt < retries) {
                 Duration wait = RetryAfter.parse(response.header("Retry-After"), clock);
                 if (wait == null) {
                     wait = Duration.ofSeconds(1L << Math.min(attempt, 5));
@@ -732,7 +1353,8 @@ public final class ZugferdXRechnungClient {
 
         /**
          * Sets how many times a request answered with HTTP 429 is retried after the
-         * {@code Retry-After} delay. Defaults to 3. Use 0 to disable retries.
+         * {@code Retry-After} delay, on every call except transform. Defaults to 3.
+         * Use 0 to disable retries.
          *
          * @param maxRetries the number of retries
          * @return this builder

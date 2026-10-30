@@ -3,14 +3,16 @@ package com.invoicexml.zugferdxrechnung;
 import com.invoicexml.zugferdxrechnung.model.PdfLanguage;
 
 /**
- * Options for {@link ZugferdXRechnungClient#renderXRechnungToPdf(FileUpload, RenderOptions)}.
+ * Options for {@link ZugferdXRechnungClient#renderXRechnungToPdf(FileUpload, RenderOptions)}
+ * and {@link ZugferdXRechnungClient#renderCiiToPdf(FileUpload, RenderOptions)}.
  */
 public final class RenderOptions {
 
     private PdfLanguage language;
     private String logoUrl;
+    private Boolean includeQrCode;
 
-    /** Creates options with the defaults: English, no logo. */
+    /** Creates options with the defaults: English, no logo, no QR code. */
     public RenderOptions() {
     }
 
@@ -52,6 +54,26 @@ public final class RenderOptions {
      */
     public RenderOptions setLogoUrl(String logoUrl) {
         this.logoUrl = logoUrl;
+        return this;
+    }
+
+    /**
+     * Returns whether the EPC payment QR code is printed.
+     *
+     * @return the setting, or {@code null} for the default (off)
+     */
+    public Boolean getIncludeQrCode() {
+        return includeQrCode;
+    }
+
+    /**
+     * Sets whether the EPC payment QR code is printed on the rendered PDF.
+     *
+     * @param includeQrCode the setting, or {@code null} for the default (off)
+     * @return this instance
+     */
+    public RenderOptions setIncludeQrCode(Boolean includeQrCode) {
+        this.includeQrCode = includeQrCode;
         return this;
     }
 }
