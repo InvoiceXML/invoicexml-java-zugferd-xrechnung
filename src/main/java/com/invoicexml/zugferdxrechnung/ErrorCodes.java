@@ -51,6 +51,8 @@ public final class ErrorCodes {
     public static final int EMAIL_DOMAIN_NOT_VERIFIED = 4022;
     /** The request exceeded the processing time limit (HTTP 503). */
     public static final int PROCESSING_TIMEOUT = 4023;
+    /** The amounts read from the PDF do not add up to its printed total. Billed; correct invoiceData and create the invoice from it. */
+    public static final int TOTALS_MISMATCH = 4024;
 
     private ErrorCodes() {
     }
