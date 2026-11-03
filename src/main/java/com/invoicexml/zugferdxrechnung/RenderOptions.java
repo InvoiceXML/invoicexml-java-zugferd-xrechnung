@@ -3,8 +3,7 @@ package com.invoicexml.zugferdxrechnung;
 import com.invoicexml.zugferdxrechnung.model.PdfLanguage;
 
 /**
- * Options for {@link ZugferdXRechnungClient#renderXRechnungToPdf(FileUpload, RenderOptions)}
- * and {@link ZugferdXRechnungClient#renderCiiToPdf(FileUpload, RenderOptions)}.
+ * Options for {@link ZugferdXRechnungClient#renderXmlToPdf(FileUpload, RenderOptions)}.
  */
 public final class RenderOptions {
 

@@ -18,6 +18,7 @@ import com.invoicexml.zugferdxrechnung.model.InvoiceOptions;
 import com.invoicexml.zugferdxrechnung.model.PdfLanguage;
 import com.invoicexml.zugferdxrechnung.model.UblProfile;
 import com.invoicexml.zugferdxrechnung.model.XRechnungSyntax;
+import com.invoicexml.zugferdxrechnung.parse.ParsedInvoice;
 import com.invoicexml.zugferdxrechnung.transport.TransportRequest;
 import com.invoicexml.zugferdxrechnung.validation.ValidationFinding;
 import com.invoicexml.zugferdxrechnung.validation.ValidationReport;
@@ -575,27 +576,27 @@ class ZugferdXRechnungClientTest {
     // ------------------------------------------------------------- render
 
     @Test
-    void renderXRechnungSendsLanguageAndLogo() {
+    void renderXmlSendsLanguageAndLogo() {
         stub.respond(200, "application/pdf", PDF);
 
-        client().renderXRechnungToPdf(FileUpload.ofXml(XML),
+        client().renderXmlToPdf(FileUpload.ofXml(XML),
                 new RenderOptions().setLanguage(PdfLanguage.DE).setLogoUrl("https://example.com/logo.png"));
 
         String body = body(stub.last());
-        assertEquals("/v1/render/xrechnung/to/pdf", stub.last().uri().getPath());
+        assertEquals("/v1/render/xml/to/pdf", stub.last().uri().getPath());
         assertTrue(body.contains("name=\"language\"\r\n\r\nde\r\n"));
         assertTrue(body.contains("name=\"logoUrl\"\r\n\r\nhttps://example.com/logo.png\r\n"));
     }
 
     @Test
-    void renderCiiPostsToItsRouteAndReturnsPdf(@TempDir Path dir) throws Exception {
+    void renderXmlPostsToItsRouteAndReturnsPdf(@TempDir Path dir) throws Exception {
         Path xml = dir.resolve("rechnung.xml");
         Files.write(xml, XML.getBytes(StandardCharsets.UTF_8));
         stub.respond(200, "application/pdf", PDF);
 
-        assertArrayEquals(PDF, client().renderCiiToPdf(xml));
+        assertArrayEquals(PDF, client().renderXmlToPdf(xml));
 
-        assertEquals("/v1/render/cii/to/pdf", stub.last().uri().getPath());
+        assertEquals("/v1/render/xml/to/pdf", stub.last().uri().getPath());
         String body = body(stub.last());
         assertTrue(body.contains("name=\"file\"; filename=\"rechnung.xml\""));
         assertEquals(1, count(body, "form-data; name="), "unset options must be omitted");
@@ -605,9 +606,9 @@ class ZugferdXRechnungClientTest {
     void renderSendsQrCodeOnlyWhenSet() {
         stub.respond(200, "application/pdf", PDF).respond(200, "application/pdf", PDF).respond(200, "application/pdf", PDF);
 
-        client().renderCiiToPdf(FileUpload.ofXml(XML), new RenderOptions().setIncludeQrCode(true));
-        client().renderXRechnungToPdf(FileUpload.ofXml(XML), new RenderOptions().setIncludeQrCode(false));
-        client().renderCiiToPdf(FileUpload.ofXml(XML), new RenderOptions());
+        client().renderXmlToPdf(FileUpload.ofXml(XML), new RenderOptions().setIncludeQrCode(true));
+        client().renderXmlToPdf(FileUpload.ofXml(XML), new RenderOptions().setIncludeQrCode(false));
+        client().renderXmlToPdf(FileUpload.ofXml(XML), new RenderOptions());
 
         assertTrue(body(stub.requests.get(0)).contains("name=\"includeQrCode\"\r\n\r\ntrue\r\n"));
         assertTrue(body(stub.requests.get(1)).contains("name=\"includeQrCode\"\r\n\r\nfalse\r\n"));
@@ -929,6 +930,85 @@ class ZugferdXRechnungClientTest {
         assertEquals("/v1/extract/attachments", stub.last().uri().getPath());
     }
 
+    // -------------------------------------------------------------- parse
+
+    private String parseResponse(String extra) throws Exception {
+        String invoice = json.readTree(Fixtures.resource("extract-json.json")).get("invoice").toString();
+        return "{\"invoice\":" + invoice + extra + "}";
+    }
+
+    @Test
+    void parseJsonUploadsThePdfAndMapsConfidenceAndLanguage() throws Exception {
+        stub.respondJson(200, parseResponse(",\"confidence\":{\"overall\":0.91,\"areas\":{"
+                + "\"sellerIdentification\":0.95,\"buyerIdentification\":0.90,"
+                + "\"taxCalculation\":0.98,\"lineItems\":null}},\"language\":\"de\""));
+
+        ParsedInvoice parsed = client().parseJson(FileUpload.ofPdf(PDF));
+
+        TransportRequest r = stub.last();
+        assertEquals("https://api.invoicexml.com/v1/parse/json", r.uri().toString());
+        assertEquals("application/json", r.header("Accept"));
+        assertTrue(r.header("Content-Type").startsWith("multipart/form-data"));
+        assertTrue(body(r).contains("name=\"file\"; filename=\"invoice.pdf\""));
+        assertTrue(body(r).contains("Content-Type: application/pdf"));
+
+        assertEquals("RE-2026-001", parsed.getInvoice().getInvoiceNumber());
+        assertEquals(LocalDate.of(2026, 7, 25), parsed.getInvoice().getIssueDate());
+        assertEquals(0, new BigDecimal("2975.00").compareTo(parsed.getInvoice().getTotals().getGrandTotalAmount()));
+        assertEquals("de", parsed.getLanguage());
+        assertEquals(new BigDecimal("0.91"), parsed.getConfidence().getOverall());
+        assertEquals(new BigDecimal("0.95"), parsed.getConfidence().getAreas().getSellerIdentification());
+        assertEquals(new BigDecimal("0.90"), parsed.getConfidence().getAreas().getBuyerIdentification());
+        assertEquals(new BigDecimal("0.98"), parsed.getConfidence().getAreas().getTaxCalculation());
+        assertNull(parsed.getConfidence().getAreas().getLineItems());
+    }
+
+    @Test
+    void parseJsonWithoutConfidenceOrLanguage(@TempDir Path dir) throws Exception {
+        Path file = dir.resolve("scan.pdf");
+        Files.write(file, PDF);
+        stub.respondJson(200, parseResponse(""));
+
+        ParsedInvoice parsed = client().parseJson(file);
+
+        assertTrue(body(stub.last()).contains("filename=\"scan.pdf\""));
+        assertEquals("RE-2026-001", parsed.getInvoice().getInvoiceNumber());
+        assertNull(parsed.getConfidence());
+        assertNull(parsed.getLanguage());
+    }
+
+    @Test
+    void parseJsonRateLimitMakesOneRequestAndThrows() {
+        stub.respondJson(429, "{\"title\":\"Too many requests\",\"errorCode\":4019}", "Retry-After", "2");
+
+        RateLimitException e = assertThrows(RateLimitException.class,
+                () -> client().parseJson(FileUpload.ofPdf(PDF)));
+
+        assertEquals(1, stub.requests.size());
+        assertEquals("/v1/parse/json", stub.last().uri().getPath());
+        assertTrue(sleeps.isEmpty());
+        assertEquals(Duration.ofSeconds(2), e.getRetryAfter());
+        assertEquals(ErrorCodes.TOO_MANY_REQUESTS, e.getErrorCode());
+    }
+
+    @Test
+    void parseJsonRefusalMapsToApiException() {
+        stub.respondJson(400, "{\"title\":\"Not an invoice\",\"errorCode\":4008}");
+
+        InvoiceXmlApiException e = assertThrows(InvoiceXmlApiException.class,
+                () -> client().parseJson(FileUpload.ofPdf(PDF)));
+
+        assertEquals(400, e.getStatusCode());
+        assertEquals(ErrorCodes.NOT_AN_INVOICE, e.getErrorCode());
+    }
+
+    @Test
+    void parseJsonRequiresAFile() {
+        assertThrows(NullPointerException.class, () -> client().parseJson((Path) null));
+        assertThrows(NullPointerException.class, () -> client().parseJson((FileUpload) null));
+        assertTrue(stub.requests.isEmpty());
+    }
+
     // ------------------------------------------------------------ retries
 
     @Test
@@ -958,12 +1038,12 @@ class ZugferdXRechnungClientTest {
         stub.respondJson(429, "{}", "Retry-After", "1").respond(200, "application/xml", XML.getBytes(StandardCharsets.UTF_8));
         stub.respondJson(429, "{}", "Retry-After", "1").respond(200, "application/pdf", PDF, "X-Invoice-Valid", "true");
 
-        client().renderCiiToPdf(FileUpload.ofXml(XML));
+        client().renderXmlToPdf(FileUpload.ofXml(XML));
         client().convertZugferdToUbl(FileUpload.ofPdf(PDF));
         client().validateZugferdReport(FileUpload.ofPdf(PDF));
 
         assertEquals(List.of(
-                "/v1/render/cii/to/pdf", "/v1/render/cii/to/pdf",
+                "/v1/render/xml/to/pdf", "/v1/render/xml/to/pdf",
                 "/v1/convert/zugferd/to/ubl", "/v1/convert/zugferd/to/ubl",
                 "/v1/validate/zugferd/report", "/v1/validate/zugferd/report"),
             stub.requests.stream().map(request -> request.uri().getPath()).collect(Collectors.toList()));

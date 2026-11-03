@@ -120,7 +120,7 @@ class LiveApiTest {
     @Test
     @Order(7)
     void renderAndEmbed() {
-        byte[] rendered = CLIENT.renderXRechnungToPdf(FileUpload.ofXml(xrechnungCii),
+        byte[] rendered = CLIENT.renderXmlToPdf(FileUpload.ofXml(xrechnungCii),
                 new RenderOptions().setLanguage(PdfLanguage.DE));
         assertPdf(rendered);
 

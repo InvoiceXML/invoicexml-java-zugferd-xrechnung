@@ -6,7 +6,7 @@
 
     <groupId>com.invoicexml</groupId>
     <artifactId>invoicexml-zugferd-xrechnung</artifactId>
-    <version>0.4.0</version>
+    <version>0.5.0</version>
     <packaging>jar</packaging>
 
     <name>InvoiceXML ZUGFeRD and XRechnung Java Client</name>
@@ -132,9 +132,40 @@
                     <artifactId>central-publishing-maven-plugin</artifactId>
                     <version>0.11.0</version>
                 </plugin>
+                <!-- Runs an example: ./mvnw -q test-compile exec:java -Dexec.mainClass=CreateCiiAndEmbed -->
+                <plugin>
+                    <groupId>org.codehaus.mojo</groupId>
+                    <artifactId>exec-maven-plugin</artifactId>
+                    <version>3.5.0</version>
+                    <configuration>
+                        <classpathScope>test</classpathScope>
+                        <cleanupDaemonThreads>false</cleanupDaemonThreads>
+                    </configuration>
+                </plugin>
             </plugins>
         </pluginManagement>
         <plugins>
+            <!-- Compiles examples/ against the library source on every build, so the examples
+                 cannot fall behind the API. They compile like tests into target/test-classes,
+                 so they never reach the published jar, and the build never runs them. -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <executions>
+                    <execution>
+                        <id>compile-examples</id>
+                        <phase>test-compile</phase>
+                        <goals>
+                            <goal>testCompile</goal>
+                        </goals>
+                        <configuration>
+                            <compileSourceRoots>
+                                <compileSourceRoot>${project.basedir}/examples</compileSourceRoot>
+                            </compileSourceRoots>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
             <plugin>
                 <groupId>org.apache.maven.plugins</groupId>
                 <artifactId>maven-jar-plugin</artifactId>

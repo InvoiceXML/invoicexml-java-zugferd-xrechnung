@@ -5,7 +5,7 @@ Create, validate, embed, render, convert and extract **ZUGFeRD** and **XRechnung
 - Java 11 or later, `java.net.http.HttpClient`, Jackson as the only dependency
 - Typed EN 16931 invoice model generated from the API's OpenAPI schema
 - Rejected invoices surface the violated rules as typed findings
-- Automatic retry on HTTP 429 on every call except transform, honouring `Retry-After`
+- Automatic retry on HTTP 429 on every call except transform and parse, honouring `Retry-After`
 
 ## Installation
 
@@ -15,20 +15,20 @@ Maven:
 <dependency>
     <groupId>com.invoicexml</groupId>
     <artifactId>invoicexml-zugferd-xrechnung</artifactId>
-    <version>0.4.0</version>
+    <version>0.5.0</version>
 </dependency>
 ```
 
 Gradle (Kotlin DSL):
 
 ```kotlin
-implementation("com.invoicexml:invoicexml-zugferd-xrechnung:0.4.0")
+implementation("com.invoicexml:invoicexml-zugferd-xrechnung:0.5.0")
 ```
 
 Gradle (Groovy DSL):
 
 ```groovy
-implementation 'com.invoicexml:invoicexml-zugferd-xrechnung:0.4.0'
+implementation 'com.invoicexml:invoicexml-zugferd-xrechnung:0.5.0'
 ```
 
 ## Get an API key
@@ -61,8 +61,8 @@ Totals and the VAT breakdown are calculated from the lines. The PDF is a ZUGFeRD
 |---|---|---|
 | `createZugferd(invoice[, options])` | `POST /v1/create/zugferd` | ZUGFeRD PDF/A-3 (`byte[]`) |
 | `createXRechnung(invoice[, options])` | `POST /v1/create/xrechnung` | XRechnung XML (`String`) |
-| `createCii(invoice[, options])` | [`POST /v1/create/cii`](https://www.invoicexml.com/docs/api/create/cii) | CII XML (`String`) |
-| `createUbl(invoice[, options])` | [`POST /v1/create/ubl`](https://www.invoicexml.com/docs/api/create/ubl) | UBL XML (`String`) |
+| `createCii(invoice[, options])` | `POST /v1/create/cii` | CII XML (`String`) |
+| `createUbl(invoice[, options])` | `POST /v1/create/ubl` | UBL XML (`String`) |
 | `validateZugferd(pdf)` | `POST /v1/validate/zugferd` | `ValidationResult` |
 | `validateXRechnung(xml)` | `POST /v1/validate/xrechnung` | `ValidationResult` |
 | `validateZugferdReport(pdf[, options])` | `POST /v1/validate/zugferd/report` | `ValidationReport` |
@@ -71,8 +71,7 @@ Totals and the VAT breakdown are calculated from the lines. The PDF is a ZUGFeRD
 | `emailZugferd(invoice, email[, options])` | `POST /v1/create/zugferd/email` | `EmailSendResult` |
 | `emailXRechnung(invoice, email[, options])` | `POST /v1/create/xrechnung/email` | `EmailSendResult` |
 | `emailEmbeddedZugferd(pdf, xml, email)` | `POST /v1/embed/zugferd/email` | `EmailSendResult` |
-| `renderXRechnungToPdf(xml[, options])` | `POST /v1/render/xrechnung/to/pdf` | Readable PDF (`byte[]`) |
-| `renderCiiToPdf(xml[, options])` | `POST /v1/render/cii/to/pdf` | Readable PDF (`byte[]`) |
+| `renderXmlToPdf(xml[, options])` | `POST /v1/render/xml/to/pdf` | Readable PDF (`byte[]`) |
 | `convertZugferdToUbl(pdf[, options])` | `POST /v1/convert/zugferd/to/ubl` | UBL XML (`String`) |
 | `convertZugferdToCii(pdf[, options])` | `POST /v1/convert/zugferd/to/cii` | CII XML (`String`) |
 | `convertXRechnungToUbl(xml[, options])` | `POST /v1/convert/xrechnung/to/ubl` | UBL XML (`String`) |
@@ -84,6 +83,7 @@ Totals and the VAT breakdown are calculated from the lines. The PDF is a ZUGFeRD
 | `convertXRechnungToZugferd(xml[, options])` | `POST /v1/convert/xrechnung/to/zugferd` | ZUGFeRD PDF/A-3 (`byte[]`) |
 | `transformToZugferd(pdf[, options])` | `POST /v1/transform/to/zugferd` | ZUGFeRD PDF/A-3 (`byte[]`), check before use |
 | `transformToXRechnung(pdf, buyerReference[, options])` | `POST /v1/transform/to/xrechnung` | XRechnung XML (`String`), check before use |
+| `parseJson(pdf)` | `POST /v1/parse/json` | `ParsedInvoice`, check before use |
 | `extractJson(file)` | `POST /v1/extract/json` | `InvoiceDocument` |
 | `extractAttachments(file)` | `POST /v1/extract/attachments` | ZIP of embedded documents (`byte[]`) |
 
@@ -107,7 +107,7 @@ byte[] pdf = client.createZugferd(invoice, new InvoiceOptions()
 
 ## Use your own PDF layout
 
-To keep your own invoice PDF, create the CII XML from the same invoice object and embed it into your PDF. The XML carries the EN 16931 profile, so `embedZugferd` accepts it as it is:
+To keep your own invoice PDF, create the CII XML from the same invoice object and embed it into your PDF. The XML carries the EN 16931 profile, so `embedZugferd` accepts it as it is ([create CII reference](https://www.invoicexml.com/docs/api/create/cii)):
 
 ```java
 String xml = client.createCii(invoice, new InvoiceOptions().setLanguage(PdfLanguage.DE));
@@ -116,7 +116,7 @@ byte[] pdf = client.embedZugferd(FileUpload.of(Path.of("my-invoice.pdf")), FileU
 
 ## Create a UBL invoice
 
-`createUbl` builds a UBL 2.1 XML from the same invoice object, with the Peppol BIS Billing 3.0 profile unless you pick another `UblProfile`:
+`createUbl` builds a UBL 2.1 XML from the same invoice object, with the Peppol BIS Billing 3.0 profile unless you pick another `UblProfile` ([create UBL reference](https://www.invoicexml.com/docs/api/create/ubl)):
 
 ```java
 String ubl = client.createUbl(invoice, new InvoiceOptions().setProfile(UblProfile.PEPPOL_BIS_3));
@@ -188,16 +188,16 @@ if (Boolean.FALSE.equals(report.getValid())) {
 
 ## Render an invoice as PDF
 
-`renderXRechnungToPdf` and `renderCiiToPdf` turn an invoice XML into a readable PDF:
+`renderXmlToPdf` turns an invoice XML into a readable PDF. CII, UBL and XRechnung are detected automatically:
 
 ```java
-byte[] pdf = client.renderXRechnungToPdf(FileUpload.of(Path.of("rechnung.xml")), new RenderOptions()
+byte[] pdf = client.renderXmlToPdf(FileUpload.of(Path.of("rechnung.xml")), new RenderOptions()
     .setLanguage(PdfLanguage.DE)
     .setLogoUrl("https://example.com/logo.png")
     .setIncludeQrCode(true));
 ```
 
-English is the default language, and the logo and the EPC payment QR code are optional. See the [XRechnung](https://www.invoicexml.com/docs/api/render/xrechnung/to/pdf) and [CII](https://www.invoicexml.com/docs/api/render/cii/to/pdf) guides.
+English is the default language, and the logo and the EPC payment QR code are optional. See the [render guide](https://www.invoicexml.com/docs/api/render/xml/to/pdf) for the details.
 
 ## Convert between formats
 
@@ -224,6 +224,15 @@ String xrechnung = client.transformToXRechnung(Path.of("invoice.pdf"), "04011000
 
 Without a language, the PDF uses the language the invoice is written in. `setPreserveOriginalPdf(true)` keeps the uploaded pages and only embeds the XML. Otherwise the PDF is rendered fresh and ends with an Electronic invoice details section for checking the technical values, which `setIncludeAdvancedProperties(false)` leaves out. A 429 on these methods is not retried automatically, so wait for `Retry-After` before calling again if you want to retry. See the [ZUGFeRD](https://www.invoicexml.com/docs/api/transform/to/zugferd) and [XRechnung](https://www.invoicexml.com/docs/api/transform/to/xrechnung) guides.
 
+## Read a PDF invoice with AI
+
+`parseJson` reads a typed, scanned or photographed PDF invoice into the invoice model, with a confidence score per area and the language the invoice is written in. AI reads the PDF, so a person must check the data before it is used, and a 429 is not retried automatically. To read the XML embedded in a ZUGFeRD PDF, use `extractJson` instead. See the [reference](https://www.invoicexml.com/docs/api/parse/json).
+
+```java
+ParsedInvoice parsed = client.parseJson(Path.of("scan.pdf"));
+InvoiceDocument invoice = parsed.getInvoice();
+```
+
 ## Errors, rate limits and retries
 
 All exceptions are unchecked and extend `InvoiceXmlException`.
@@ -237,7 +246,7 @@ All exceptions are unchecked and extend `InvoiceXmlException`.
 | `InvoiceXmlApiException` | Any other error response, with `getErrorCode()` from `ErrorCodes` |
 | `InvoiceXmlConnectionException` | The API could not be reached |
 
-On HTTP 429 every call except transform waits for the `Retry-After` delay and retries, three times by default. A 429 is not billed.
+On HTTP 429 every call except transform and parse waits for the `Retry-After` delay and retries, three times by default. A 429 is not billed.
 
 ```java
 var client = ZugferdXRechnungClient.builder()
@@ -257,6 +266,10 @@ The client is immutable and thread-safe. Create one instance and share it. To re
 - **Zero data retention.** Invoices are processed in memory and purged when the response is delivered. Nothing is stored or logged, and nothing is used for AI training. When you email an invoice, it goes to our email service for delivery, and we keep no copy.
 - **Processing in Frankfurt.** All processing happens in the EU, in Frankfurt, Germany. See [www.invoicexml.com/trust](https://www.invoicexml.com/trust).
 - **Integration assistance.** Questions about your integration go to [support@invoicexml.com](mailto:support@invoicexml.com), from setup to your first production invoice.
+
+## Examples
+
+The [examples](examples) folder holds a small program per common task: create with your own PDF, create CII and embed, email, validate, render, convert, transform, parse with AI, and extract. The create and email examples build their invoice inline, and every file an example reads is set by a path constant at the top. Each one runs with `./mvnw -q test-compile exec:java -Dexec.mainClass=<name>`. See [examples/README.md](examples/README.md).
 
 ## Documentation
 
