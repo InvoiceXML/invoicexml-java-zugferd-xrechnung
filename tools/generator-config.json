@@ -3,9 +3,22 @@
   "outDir": "src/main/java/com/invoicexml/zugferdxrechnung/model",
   "roots": ["CreateInvoiceRequest"],
   "excludeProperties": {
-    "InvoiceOptions": ["profile", "rules"]
+    "InvoiceOptions": ["rules"]
   },
   "stringEnums": {
+    "InvoiceOptions.profile": {
+      "type": "UblProfile",
+      "doc": "UBL invoice profiles of {@code /v1/create/ubl}. The profile picks the UBL CustomizationID and the rule set the invoice is validated against.",
+      "values": { "EN16931": "en16931", "PEPPOL_BIS_3": "peppol-bis-3", "NLCIUS": "nlcius", "EHF": "ehf", "XRECHNUNG": "xrechnung", "PINT": "pint" },
+      "valueDocs": {
+        "EN16931": "Generic EN 16931, without a CIUS.",
+        "PEPPOL_BIS_3": "Peppol BIS Billing 3.0, the default.",
+        "NLCIUS": "The Dutch public sector CIUS (NLCIUS).",
+        "EHF": "The Norwegian EHF Billing 3.0.",
+        "XRECHNUNG": "XRechnung 3.0 for the German public sector.",
+        "PINT": "The Peppol International (PINT) base profile."
+      }
+    },
     "InvoiceOptions.syntax": {
       "type": "XRechnungSyntax",
       "doc": "XML syntax of an XRechnung created by {@code /v1/create/xrechnung}.",
@@ -15,10 +28,11 @@
   "propertyDocs": {
     "CreateInvoiceRequest.invoice": "The invoice to create.",
     "CreateInvoiceRequest.options": "Optional rendering and processing settings. Defaults apply when omitted.",
-    "InvoiceOptions.syntax": "XML syntax produced by {@code /v1/create/xrechnung}: UBL 2.1 (the default) or UN/CEFACT CII. Both declare the same specification identifier and pass the same BR-DE rule set. Ignored by {@code /v1/create/zugferd}.",
-    "InvoiceOptions.language": "Language of the rendered PDF template of {@code /v1/create/zugferd}. English when omitted.",
+    "InvoiceOptions.profile": "UBL profile of {@code /v1/create/ubl}. It picks the UBL CustomizationID and the rule set the invoice is validated against. {@link UblProfile#PEPPOL_BIS_3} when omitted. The other create routes ignore it.",
+    "InvoiceOptions.syntax": "XML syntax produced by {@code /v1/create/xrechnung}: UBL 2.1 (the default) or UN/CEFACT CII. Both declare the same specification identifier and pass the same BR-DE rule set. The other create routes ignore it.",
+    "InvoiceOptions.language": "Language of the rendered PDF template of {@code /v1/create/zugferd}, and of the default texts the XML gains on every create route when the invoice has none, such as the payment terms. English when omitted.",
     "InvoiceOptions.brandColor": "Primary brand colour in {@code #RRGGBB} form, applied to headings and accent backgrounds of the rendered PDF template. Body text is never recoloured.",
-    "InvoiceOptions.pdfUrl": "Public http(s) URL of your own PDF to use as the visual layer of {@code /v1/create/zugferd}. The generated XML is embedded into that PDF instead of the rendered template, so {@code language}, {@code brandColor}, {@code logoUrl} and {@code includeAdvancedProperties} are ignored. Ignored by {@code /v1/create/xrechnung}.",
+    "InvoiceOptions.pdfUrl": "Public http(s) URL of your own PDF to use as the visual layer of {@code /v1/create/zugferd}. The generated XML is embedded into that PDF instead of the rendered template, so {@code language}, {@code brandColor}, {@code logoUrl} and {@code includeAdvancedProperties} are ignored. The XML create routes ignore it.",
     "InvoiceOptions.logoUrl": "Public URL of the seller's logo (PNG or JPEG, at most 2 MB and 4 megapixels), printed top left on the rendered PDF template and scaled to fit a 170 x 48 pt box.",
     "InvoiceOptions.includeAdvancedProperties": "When {@code true}, the rendered PDF gains an \"Electronic invoice details\" section listing technical properties that a classic layout does not show, such as the specification identifier, the business process, party identifiers and electronic addresses. Defaults to {@code false}."
   }

@@ -8,13 +8,17 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.invoicexml.zugferdxrechnung.email.EmailMessage;
 import com.invoicexml.zugferdxrechnung.model.InvoiceDocument;
 import com.invoicexml.zugferdxrechnung.model.InvoiceNote;
+import com.invoicexml.zugferdxrechnung.model.InvoiceOptions;
 import com.invoicexml.zugferdxrechnung.model.SellerIdentifier;
+import com.invoicexml.zugferdxrechnung.model.UblProfile;
 import com.invoicexml.zugferdxrechnung.model.XRechnungSyntax;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.Clock;
 import java.time.ZoneOffset;
+import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 import org.junit.jupiter.api.Test;
 
 class ModelTest {
@@ -49,6 +53,17 @@ class ModelTest {
     void syntaxParsesCaseInsensitively() {
         assertEquals(XRechnungSyntax.CII, XRechnungSyntax.fromValue("CII"));
         assertThrows(IllegalArgumentException.class, () -> XRechnungSyntax.fromValue("pdf"));
+    }
+
+    @Test
+    void ublProfileRoundTrips() throws Exception {
+        String json = mapper.writeValueAsString(new InvoiceOptions().setProfile(UblProfile.PEPPOL_BIS_3));
+        assertEquals("{\"profile\":\"peppol-bis-3\"}", json);
+        assertEquals(UblProfile.PEPPOL_BIS_3, mapper.readValue(json, InvoiceOptions.class).getProfile());
+        assertEquals(List.of("en16931", "peppol-bis-3", "nlcius", "ehf", "xrechnung", "pint"),
+                Arrays.stream(UblProfile.values()).map(UblProfile::getValue).collect(Collectors.toList()));
+        assertEquals(UblProfile.XRECHNUNG, UblProfile.fromValue("XRechnung"));
+        assertThrows(IllegalArgumentException.class, () -> UblProfile.fromValue("pint-sg"));
     }
 
     @Test

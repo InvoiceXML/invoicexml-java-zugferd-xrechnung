@@ -16,6 +16,7 @@ import com.invoicexml.zugferdxrechnung.model.CreateInvoiceRequest;
 import com.invoicexml.zugferdxrechnung.model.InvoiceDocument;
 import com.invoicexml.zugferdxrechnung.model.InvoiceOptions;
 import com.invoicexml.zugferdxrechnung.model.PdfLanguage;
+import com.invoicexml.zugferdxrechnung.model.UblProfile;
 import com.invoicexml.zugferdxrechnung.model.XRechnungSyntax;
 import com.invoicexml.zugferdxrechnung.transport.TransportRequest;
 import com.invoicexml.zugferdxrechnung.validation.ValidationFinding;
@@ -154,6 +155,115 @@ class ZugferdXRechnungClientTest {
     void createRequiresAnInvoiceRequest() {
         assertThrows(NullPointerException.class,
                 () -> client().createZugferd((com.invoicexml.zugferdxrechnung.model.CreateInvoiceRequest) null));
+    }
+
+    @Test
+    void createCiiPostsJsonAndReturnsXml() throws Exception {
+        stub.respond(200, "application/xml", XML.getBytes(StandardCharsets.UTF_8),
+                "Content-Disposition", "attachment; filename=invoice-cii-RE-2026-001.xml");
+
+        String xml = client().createCii(Fixtures.invoice());
+
+        assertEquals(XML, xml);
+        TransportRequest r = stub.last();
+        assertEquals("POST", r.method());
+        assertEquals("https://api.invoicexml.com/v1/create/cii", r.uri().toString());
+        assertEquals("application/json", r.header("Content-Type"));
+        JsonNode sent = json.readTree(r.body());
+        assertEquals("RE-2026-001", sent.at("/invoice/invoiceNumber").asText());
+        assertFalse(sent.has("options"), "null options must be omitted");
+    }
+
+    @Test
+    void createCiiSendsLanguage() throws Exception {
+        stub.respond(200, "application/xml", XML.getBytes(StandardCharsets.UTF_8));
+
+        client().createCii(Fixtures.invoice(), new InvoiceOptions().setLanguage(PdfLanguage.DE));
+
+        JsonNode options = json.readTree(stub.last().body()).get("options");
+        assertEquals("DE", options.get("language").asText());
+        assertEquals(1, options.size(), "unset options must be omitted");
+    }
+
+    @Test
+    void createCiiTakesAFullRequestEnvelope() throws Exception {
+        stub.respond(200, "application/xml", XML.getBytes(StandardCharsets.UTF_8));
+
+        String xml = client().createCii(new CreateInvoiceRequest().setInvoice(Fixtures.invoice())
+                .setOptions(new InvoiceOptions().setLanguage(PdfLanguage.FR)));
+
+        assertEquals(XML, xml);
+        assertEquals("/v1/create/cii", stub.last().uri().getPath());
+        JsonNode sent = json.readTree(stub.last().body());
+        assertEquals("RE-2026-001", sent.at("/invoice/invoiceNumber").asText());
+        assertEquals("FR", sent.at("/options/language").asText());
+    }
+
+    @Test
+    void createUblPostsJsonAndReturnsXml() throws Exception {
+        stub.respond(200, "application/xml", XML.getBytes(StandardCharsets.UTF_8),
+                "Content-Disposition", "attachment; filename=invoice-ubl-RE-2026-001.xml");
+
+        String xml = client().createUbl(Fixtures.invoice());
+
+        assertEquals(XML, xml);
+        TransportRequest r = stub.last();
+        assertEquals("POST", r.method());
+        assertEquals("https://api.invoicexml.com/v1/create/ubl", r.uri().toString());
+        assertEquals("application/json", r.header("Content-Type"));
+        JsonNode sent = json.readTree(r.body());
+        assertEquals("RE-2026-001", sent.at("/invoice/invoiceNumber").asText());
+        assertFalse(sent.has("options"), "null options must be omitted");
+    }
+
+    @Test
+    void createUblSendsProfileAndLanguage() throws Exception {
+        stub.respond(200, "application/xml", XML.getBytes(StandardCharsets.UTF_8));
+
+        client().createUbl(Fixtures.invoice(), new InvoiceOptions()
+                .setProfile(UblProfile.PEPPOL_BIS_3)
+                .setLanguage(PdfLanguage.DE));
+
+        JsonNode options = json.readTree(stub.last().body()).get("options");
+        assertEquals("peppol-bis-3", options.get("profile").asText());
+        assertEquals("DE", options.get("language").asText());
+        assertEquals(2, options.size(), "unset options must be omitted");
+    }
+
+    @Test
+    void createUblTakesAFullRequestEnvelope() throws Exception {
+        stub.respond(200, "application/xml", XML.getBytes(StandardCharsets.UTF_8));
+
+        client().createUbl(new CreateInvoiceRequest().setInvoice(Fixtures.invoice())
+                .setOptions(new InvoiceOptions().setProfile(UblProfile.XRECHNUNG)));
+
+        assertEquals("/v1/create/ubl", stub.last().uri().getPath());
+        assertEquals("xrechnung", json.readTree(stub.last().body()).at("/options/profile").asText());
+    }
+
+    @Test
+    void createCiiAndUblRejectionCarriesFindings() {
+        stub.respondJson(400, Fixtures.resource("create-400.json"));
+        stub.respondJson(400, Fixtures.resource("create-400.json"));
+
+        InvoiceValidationException cii = assertThrows(InvoiceValidationException.class,
+                () -> client().createCii(Fixtures.invoice()));
+        assertEquals("/v1/create/cii", stub.last().uri().getPath());
+        InvoiceValidationException ubl = assertThrows(InvoiceValidationException.class,
+                () -> client().createUbl(Fixtures.invoice()));
+        assertEquals("/v1/create/ubl", stub.last().uri().getPath());
+
+        for (InvoiceValidationException e : List.of(cii, ubl)) {
+            assertEquals(ErrorCodes.MODEL_VALIDATION, e.getErrorCode());
+            assertEquals("BR-CO-26", e.getErrors().get(0).getRule());
+        }
+    }
+
+    @Test
+    void createCiiAndUblRequireARequest() {
+        assertThrows(NullPointerException.class, () -> client().createCii((CreateInvoiceRequest) null));
+        assertThrows(NullPointerException.class, () -> client().createUbl((CreateInvoiceRequest) null));
+        assertTrue(stub.requests.isEmpty());
     }
 
     // ----------------------------------------------------------- validate

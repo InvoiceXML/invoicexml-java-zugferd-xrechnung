@@ -15,20 +15,20 @@ Maven:
 <dependency>
     <groupId>com.invoicexml</groupId>
     <artifactId>invoicexml-zugferd-xrechnung</artifactId>
-    <version>0.3.0</version>
+    <version>0.4.0</version>
 </dependency>
 ```
 
 Gradle (Kotlin DSL):
 
 ```kotlin
-implementation("com.invoicexml:invoicexml-zugferd-xrechnung:0.3.0")
+implementation("com.invoicexml:invoicexml-zugferd-xrechnung:0.4.0")
 ```
 
 Gradle (Groovy DSL):
 
 ```groovy
-implementation 'com.invoicexml:invoicexml-zugferd-xrechnung:0.3.0'
+implementation 'com.invoicexml:invoicexml-zugferd-xrechnung:0.4.0'
 ```
 
 ## Get an API key
@@ -61,6 +61,8 @@ Totals and the VAT breakdown are calculated from the lines. The PDF is a ZUGFeRD
 |---|---|---|
 | `createZugferd(invoice[, options])` | `POST /v1/create/zugferd` | ZUGFeRD PDF/A-3 (`byte[]`) |
 | `createXRechnung(invoice[, options])` | `POST /v1/create/xrechnung` | XRechnung XML (`String`) |
+| `createCii(invoice[, options])` | [`POST /v1/create/cii`](https://www.invoicexml.com/docs/api/create/cii) | CII XML (`String`) |
+| `createUbl(invoice[, options])` | [`POST /v1/create/ubl`](https://www.invoicexml.com/docs/api/create/ubl) | UBL XML (`String`) |
 | `validateZugferd(pdf)` | `POST /v1/validate/zugferd` | `ValidationResult` |
 | `validateXRechnung(xml)` | `POST /v1/validate/xrechnung` | `ValidationResult` |
 | `validateZugferdReport(pdf[, options])` | `POST /v1/validate/zugferd/report` | `ValidationReport` |
@@ -101,6 +103,23 @@ For ZUGFeRD, the options also set the PDF language, a logo, a brand colour, or y
 byte[] pdf = client.createZugferd(invoice, new InvoiceOptions()
     .setLanguage(PdfLanguage.DE)
     .setLogoUrl("https://example.com/logo.png"));
+```
+
+## Use your own PDF layout
+
+To keep your own invoice PDF, create the CII XML from the same invoice object and embed it into your PDF. The XML carries the EN 16931 profile, so `embedZugferd` accepts it as it is:
+
+```java
+String xml = client.createCii(invoice, new InvoiceOptions().setLanguage(PdfLanguage.DE));
+byte[] pdf = client.embedZugferd(FileUpload.of(Path.of("my-invoice.pdf")), FileUpload.ofXml(xml));
+```
+
+## Create a UBL invoice
+
+`createUbl` builds a UBL 2.1 XML from the same invoice object, with the Peppol BIS Billing 3.0 profile unless you pick another `UblProfile`:
+
+```java
+String ubl = client.createUbl(invoice, new InvoiceOptions().setProfile(UblProfile.PEPPOL_BIS_3));
 ```
 
 ## Send an invoice by email
