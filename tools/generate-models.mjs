@@ -406,6 +406,8 @@ write('InvoiceTypeCodes.java', HEADER + `package ${pkg};
  * UNTDID 1001 invoice type codes accepted by the API.
  */
 public final class InvoiceTypeCodes {
+    /** Self-billed credit note: credits a self-billed invoice. */
+    public static final String SELF_BILLED_CREDIT_NOTE = "261";
     /** Partial invoice. */
     public static final String PARTIAL_INVOICE = "326";
     /** Commercial invoice. */
@@ -420,6 +422,8 @@ public final class InvoiceTypeCodes {
     public static final String PREPAYMENT_INVOICE = "386";
     /** Self-billed invoice. */
     public static final String SELF_BILLED_INVOICE = "389";
+    /** Self-billed prepayment invoice: a prepayment request the buyer issues. */
+    public static final String SELF_BILLED_PREPAYMENT_INVOICE = "500";
     /** Partial construction invoice. */
     public static final String PARTIAL_CONSTRUCTION_INVOICE = "875";
     /** Partial final construction invoice. */
